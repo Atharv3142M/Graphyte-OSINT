@@ -1,0 +1,118 @@
+# Unified Enterprise OSINT Platform - Polyglot Persistence Stack
+# Run: docker compose up -d
+
+services:
+  # In-memory message broker for Celery task queue
+  redis:
+    image: redis:7-alpine
+    container_name: osint-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - osint-net
+
+  # Enterprise-grade message broker for Pub/Sub event bus
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: osint-rabbitmq
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-dev_rabbitmq_secret}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - osint-net
+
+  # Native graph database for relational STIX data
+  neo4j:
+    image: neo4j:5-community
+    container_name: osint-neo4j
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-dev_neo4j_secret}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 1G
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - osint-net
+
+  # Vector database for unstructured/semantic search
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.24.0
+    container_name: osint-weaviate
+    ports:
+      - "${WEAVIATE_HTTP_PORT:-8080}:8080"
+      - "${WEAVIATE_GRPC_PORT:-50051}:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - osint-net
+
+  # Relational DB for user configs, multi-tenant state, audit logs
+  postgres:
+    image: postgres:16-alpine
+    container_name: osint-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-osint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_postgres_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-osint_platform}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-osint} -d ${POSTGRES_DB:-osint_platform}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - osint-net
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+  neo4j_data:
+  weaviate_data:
+  postgres_data:
+
+networks:
+  osint-net:
+    driver: bridge
