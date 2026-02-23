@@ -1,19 +1,18 @@
 """
-Unified Enterprise OSINT Platform - FastAPI Backend
+Unified Enterprise OSINT Platform - FastAPI Command Dispatcher & State Manager.
+All OSINT work is dispatched to Celery; no direct execution in the main thread.
+WebSocket streams real-time stdout/stderr from worker to frontend.
 """
+import asyncio
+import json
 import os
-from fastapi import FastAPI, HTTPException
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from redis import Redis
 
-from modules.shodan_recon import shodan_search
-from modules.censys_recon import censys_search
-from modules.scraper import scrape_urls
-from modules.port_scanner import scan_ports
-
-USE_CELERY = os.getenv("USE_CELERY", "false").lower() == "true"
-if USE_CELERY:
-    from tasks import task_shodan, task_censys, task_scrape, task_port_scan
+from tasks import task_shodan, task_censys, task_scrape, task_port_scan
 
 app = FastAPI(title="Unified Enterprise OSINT Platform API", version="0.1.0")
 
@@ -24,6 +23,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _redis() -> Redis:
+    url = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    return Redis.from_url(url)
 
 
 class ShodanRequest(BaseModel):
@@ -56,48 +60,97 @@ def health():
 
 @app.post("/api/shodan")
 def api_shodan(req: ShodanRequest):
-    if USE_CELERY:
-        t = task_shodan.delay(req.target, req.api_key)
-        return {"task_id": t.id, "status": "queued", "result_url": f"/api/tasks/{t.id}"}
-    result = shodan_search(req.target, req.api_key)
-    if result.get("error") and not result.get("success"):
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    t = task_shodan.delay(req.target, req.api_key)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
 
 
 @app.post("/api/censys")
 def api_censys(req: CensysRequest):
-    if USE_CELERY:
-        t = task_censys.delay(req.target, req.api_id, req.api_secret)
-        return {"task_id": t.id, "status": "queued", "result_url": f"/api/tasks/{t.id}"}
-    result = censys_search(req.target, req.api_id, req.api_secret)
-    if result.get("error") and not result.get("success"):
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    t = task_censys.delay(req.target, req.api_id, req.api_secret)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
 
 
 @app.post("/api/scrape")
 def api_scrape(req: ScraperRequest):
-    if USE_CELERY:
-        t = task_scrape.delay(req.urls, req.max_workers)
-        return {"task_id": t.id, "status": "queued", "result_url": f"/api/tasks/{t.id}"}
-    return scrape_urls(req.urls, req.max_workers)
+    t = task_scrape.delay(req.urls, req.max_workers)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
 
 
 @app.post("/api/port-scan")
 def api_port_scan(req: PortScannerRequest):
-    if USE_CELERY:
-        t = task_port_scan.delay(req.host, req.ports, req.max_workers, req.timeout)
-        return {"task_id": t.id, "status": "queued", "result_url": f"/api/tasks/{t.id}"}
-    return scan_ports(req.host, req.ports, req.max_workers, req.timeout)
+    t = task_port_scan.delay(req.host, req.ports, req.max_workers, req.timeout)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
 
 
 @app.get("/api/tasks/{task_id}")
 def get_task_result(task_id: str):
-    if not USE_CELERY:
-        raise HTTPException(status_code=400, detail="Celery not enabled")
     from celery_app import celery_app
     r = celery_app.AsyncResult(task_id)
     if r.ready():
         return {"task_id": task_id, "status": r.status, "result": r.result}
     return {"task_id": task_id, "status": r.status}
+
+
+REDIS_CHAN_PREFIX = "osint:task:stream:"
+
+
+@app.websocket("/ws/task/{task_id}")
+async def websocket_task_stream(websocket: WebSocket, task_id: str):
+    await websocket.accept()
+    redis = _redis()
+    pubsub = redis.pubsub()
+    chan = f"{REDIS_CHAN_PREFIX}{task_id}"
+    pubsub.subscribe(chan)
+
+    loop = asyncio.get_event_loop()
+
+    async def send_to_client():
+        while True:
+            msg = await loop.run_in_executor(
+                None,
+                lambda: pubsub.get_message(ignore_subscribe_messages=True, timeout=1),
+            )
+            if msg is None:
+                await asyncio.sleep(0.05)
+                continue
+            if msg["type"] == "message":
+                try:
+                    payload = msg["data"].decode("utf-8")
+                    await websocket.send_text(payload)
+                    obj = json.loads(payload)
+                    if obj.get("type") == "done":
+                        break
+                except (json.JSONDecodeError, WebSocketDisconnect):
+                    break
+
+    try:
+        await asyncio.wait_for(send_to_client(), timeout=3600)
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        pubsub.unsubscribe(chan)
+        pubsub.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass

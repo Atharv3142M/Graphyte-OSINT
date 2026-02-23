@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const WS_BASE = API_BASE.replace(/^http/, "ws");
 
 type Tool = "shodan" | "censys" | "scrape" | "port-scan" | null;
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<Tool>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [streamLog, setStreamLog] = useState<string[]>([]);
+  const [finalResult, setFinalResult] = useState<string | null>(null);
   const [form, setForm] = useState({
     target: "",
     urls: "",
@@ -18,10 +20,14 @@ export default function Home() {
     api_id: "",
     api_secret: "",
   });
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const runRequest = async () => {
+  const runRequest = useCallback(async () => {
     setLoading(true);
-    setResult(null);
+    setStreamLog([]);
+    setFinalResult(null);
+    wsRef.current?.close();
+
     try {
       let res: Response;
       if (activeTool === "shodan") {
@@ -67,14 +73,53 @@ export default function Home() {
         setLoading(false);
         return;
       }
+
       const data = await res.json();
-      setResult(JSON.stringify(data, null, 2));
+      const taskId = data.task_id;
+      if (!taskId) {
+        setFinalResult(JSON.stringify(data, null, 2));
+        setLoading(false);
+        return;
+      }
+
+      const ws = new WebSocket(`${WS_BASE}/ws/task/${taskId}`);
+      wsRef.current = ws;
+
+      ws.onmessage = (ev) => {
+        try {
+          const obj = JSON.parse(ev.data);
+          if (obj.type === "done") {
+            setLoading(false);
+            ws.close();
+            wsRef.current = null;
+            return;
+          }
+          if (obj.type === "result" && obj.data) {
+            setFinalResult(JSON.stringify(obj.data, null, 2));
+            return;
+          }
+          if (obj.stream && obj.data) {
+            setStreamLog((prev) => [...prev, `[${obj.stream}] ${obj.data}`]);
+          }
+        } catch {
+          setStreamLog((prev) => [...prev, ev.data]);
+        }
+      };
+
+      ws.onerror = () => {
+        setStreamLog((prev) => [...prev, "[error] WebSocket error"]);
+        setLoading(false);
+      };
+
+      ws.onclose = () => {
+        setLoading(false);
+        wsRef.current = null;
+      };
     } catch (e) {
-      setResult(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
+      setFinalResult(`Error: ${e instanceof Error ? e.message : String(e)}`);
       setLoading(false);
     }
-  };
+  }, [activeTool, form]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
@@ -82,7 +127,9 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-cyan-400">
           Unified Enterprise OSINT Platform
         </h1>
-        <p className="mt-2 text-slate-400">Digital Footprint & Reconnaissance Dashboard</p>
+        <p className="mt-2 text-slate-400">
+          Distributed task queue · Real-time stream · WebSocket
+        </p>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
@@ -178,9 +225,20 @@ export default function Home() {
         </section>
       )}
 
-      {result && (
+      {streamLog.length > 0 && (
+        <section className="bg-slate-900 border border-slate-700 rounded-xl p-4 mb-8">
+          <h3 className="text-sm font-semibold text-slate-400 mb-2">Stream</h3>
+          <pre className="text-xs text-slate-300 overflow-auto max-h-40 font-mono">
+            {streamLog.map((line, i) => (
+              <div key={i}>{line}</div>
+            ))}
+          </pre>
+        </section>
+      )}
+
+      {finalResult && (
         <pre className="bg-slate-900 border border-slate-700 rounded-xl p-6 overflow-auto text-sm text-slate-300">
-          {result}
+          {finalResult}
         </pre>
       )}
     </main>
