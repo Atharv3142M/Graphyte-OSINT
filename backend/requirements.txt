@@ -1,0 +1,9 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+shodan>=1.31.0
+censys>=2.2.0
+validators>=0.22.0
+requests>=2.31.0
+beautifulsoup4>=4.11.1
+fake-useragent>=1.4.0
+phonenumbers>=8.13.0
