@@ -11,7 +11,7 @@ Independent project building a Unified Enterprise OSINT Platform. Original sourc
 │   ├── src/app/       # App router, layout, page
 │   └── ...
 ├── backend/           # FastAPI
-│   ├── main.py        # FastAPI app, CORS, health
+│   ├── main.py        # FastAPI app, CORS, health, API routes
 │   ├── requirements.txt
 │   └── modules/       # Extracted OSINT modules (programmatic API)
 │       ├── shodan_recon.py   # Shodan API (from am0nt31r0/OSINT-Search)
@@ -21,6 +21,15 @@ Independent project building a Unified Enterprise OSINT Platform. Original sourc
 ├── context.md
 └── (original repos - to be removed)
 ```
+
+## API Endpoints
+
+| Method | Endpoint | Body |
+|--------|----------|------|
+| POST | `/api/shodan` | `{ "target": "1.2.3.4" or "example.com", "api_key": "optional" }` |
+| POST | `/api/censys` | `{ "target": "1.2.3.4", "api_id": "optional", "api_secret": "optional" }` |
+| POST | `/api/scrape` | `{ "urls": ["https://..."], "max_workers": 5 }` |
+| POST | `/api/port-scan` | `{ "host": "example.com", "ports": [80,443], "max_workers": 20, "timeout": 2.0 }` |
 
 ## Extracted Modules (backend/modules/)
 
@@ -40,12 +49,17 @@ All modules accept arguments programmatically (no CLI parsing) for FastAPI/Celer
 
 Replace via env/config in production; never hardcode real keys.
 
+## Run
+
+- **Backend**: `cd backend && pip install -r requirements.txt && uvicorn main:app --reload`
+- **Frontend**: `cd frontend && npm install && npm run dev`
+
 ## Status
 
 - [x] Project structure initialized (frontend + backend)
 - [x] backend/modules/ created
 - [x] Shodan, Censys, scraper, port_scanner extracted and rewritten
-- [ ] FastAPI routes to expose modules (planned)
+- [x] FastAPI routes (`/api/shodan`, `/api/censys`, `/api/scrape`, `/api/port-scan`)
 - [ ] Celery/async task integration (planned)
 - [ ] Frontend UI (planned)
 - [ ] Remove original repo folders (after confirmation)
