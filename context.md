@@ -33,8 +33,11 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 ├── backend/
 │   ├── main.py            # Dispatcher, WebSocket, no OSINT execution
 │   ├── celery_app.py      # Celery config (Redis broker)
-│   ├── tasks.py           # Subprocess wrapper, async capture, Redis pub, SIGKILL
-│   ├── run_module.py      # CLI for subprocess (stdin JSON → stdout JSON)
+│   ├── tasks.py           # Subprocess wrapper, async capture, Redis pub, SIGKILL, temp config
+│   ├── run_module.py      # CLI for subprocess (stdin JSON → stdout JSON, reads OSINT_CONFIG_FILE)
+│   ├── config_injection.py# Dynamic, headless config injection (simulated Vault)
+│   ├── stix_pipeline.py   # STIX 2.1 mapping helpers
+│   ├── neo4j_client.py    # Minimal Neo4j ingestion client
 │   └── modules/           # Extracted OSINT modules (invoked via subprocess)
 ├── docker-compose.yml
 ├── .env.example
@@ -60,6 +63,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | `censys_recon` | am0nt31r0/OSINT-Search | `python -m run_module censys_recon` |
 | `scraper` | Hamed233/Digital-Footprint-OSINT-Tool | `python -m run_module scraper` |
 | `port_scanner` | Kcisti/bat-security-toolkit | `python -m run_module port_scanner` |
+| `cyberninja_passive` | CyberNinja-main (sandboxed) | `python -m run_module cyberninja_passive` |
 
 ## Run
 
@@ -82,6 +86,9 @@ cd frontend && npm install && npm run dev
 
 - `CELERY_TASK_HARD_TIMEOUT` – Seconds before SIGKILL (default 300)
 - `CELERY_BROKER_URL` / `REDIS_URL` – Redis for Celery and pub/sub
+- `VAULT_SHODAN_API_KEY` – Simulated encrypted Shodan key (used by config injection)
+- `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` – Simulated encrypted Censys creds
+- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` – Neo4j connection for STIX ingestion
 
 ## Status
 
@@ -93,6 +100,9 @@ cd frontend && npm install && npm run dev
 - [x] Hard timeout + SIGKILL on hang
 - [x] Frontend WebSocket client
 - [x] docker-compose, .env.example
-- [ ] Neo4j/Weaviate/PostgreSQL wiring (planned)
+- [x] Dynamic config injection (temp files, simulated Vault)
+- [x] CyberNinja passive sandbox wrapper
+- [x] STIX 2.1 mapping helpers + Neo4j client
+- [ ] Weaviate/PostgreSQL wiring (planned)
 - [ ] RabbitMQ Pub/Sub handlers (planned)
 - [ ] Remove original repo folders (after confirmation)

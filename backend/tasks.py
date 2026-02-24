@@ -9,33 +9,47 @@ import json
 import os
 import sys
 import threading
+from typing import Dict, Optional
 
 from celery_app import celery_app
+from config_injection import temporary_service_config
 
-# Strict hard timeout (seconds). SIGKILL sent if exceeded.
+# Strict hard timeout (seconds). Subprocess is killed if exceeded.
 TASK_HARD_TIMEOUT = int(os.getenv("CELERY_TASK_HARD_TIMEOUT", "300"))
 
 # Redis pub channel prefix
 REDIS_CHAN_PREFIX = "osint:task:stream:"
 
+# Modules that require secrets from the dynamic config system.
+MODULE_SECRET_SERVICE: Dict[str, str] = {
+    "shodan_recon": "shodan",
+    "censys_recon": "censys",
+}
+
 
 def _get_redis():
     from redis import Redis
+
     url = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL", "redis://localhost:6379/0")
     return Redis.from_url(url)
 
 
-def _run_module_subprocess(
+def _spawn_and_stream(
     module_name: str,
     payload: dict,
     task_id: str,
     redis_client,
+    extra_env: Optional[Dict[str, str]] = None,
 ) -> dict:
     import subprocess
 
     chan = f"{REDIS_CHAN_PREFIX}{task_id}"
     stdin_json = json.dumps(payload).encode("utf-8")
     stdout_lines: list[str] = []
+
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "run_module", module_name],
@@ -44,6 +58,7 @@ def _run_module_subprocess(
         stderr=subprocess.PIPE,
         cwd=os.path.dirname(os.path.abspath(__file__)),
         bufsize=0,
+        env=env,
     )
     proc.stdin.write(stdin_json)
     proc.stdin.close()
@@ -89,9 +104,6 @@ def _run_module_subprocess(
         except Exception:
             pass
 
-    kill_thread = threading.Thread(target=kill_on_timeout, daemon=True)
-    kill_thread.start()
-
     stdout_thread = threading.Thread(target=read_stdout, args=(proc.stdout,), daemon=True)
     stderr_thread = threading.Thread(target=read_stderr, args=(proc.stderr,), daemon=True)
     stdout_thread.start()
@@ -103,10 +115,15 @@ def _run_module_subprocess(
     stderr_thread.join(timeout=2)
 
     if killed.is_set():
-        redis_client.publish(chan, json.dumps({
-            "stream": "stderr",
-            "data": f"Task killed after {TASK_HARD_TIMEOUT}s timeout (SIGKILL)",
-        }))
+        redis_client.publish(
+            chan,
+            json.dumps(
+                {
+                    "stream": "stderr",
+                    "data": f"Task killed after {TASK_HARD_TIMEOUT}s timeout (SIGKILL)",
+                }
+            ),
+        )
         redis_client.publish(chan, json.dumps({"type": "done", "killed": True}))
         return {"error": "Task timeout (SIGKILL)", "success": False}
 
@@ -119,6 +136,26 @@ def _run_module_subprocess(
     redis_client.publish(chan, json.dumps({"type": "result", "data": result}))
     redis_client.publish(chan, json.dumps({"type": "done"}))
     return result
+
+
+def _run_module_subprocess(
+    module_name: str,
+    payload: dict,
+    task_id: str,
+    redis_client,
+) -> dict:
+    """
+    Optionally create a temporary config for sensitive modules, then spawn and stream.
+    """
+    service = MODULE_SECRET_SERVICE.get(module_name)
+    if service:
+        with temporary_service_config(service) as (_, config_path):
+            extra_env = {
+                "OSINT_CONFIG_FILE": config_path,
+                "OSINT_SERVICE": service,
+            }
+            return _spawn_and_stream(module_name, payload, task_id, redis_client, extra_env)
+    return _spawn_and_stream(module_name, payload, task_id, redis_client)
 
 
 @celery_app.task(

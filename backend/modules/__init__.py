@@ -17,5 +17,9 @@ try:
     from .port_scanner import scan_ports
 except ImportError:
     scan_ports = None
+try:
+    from .cyberninja_passive import cyberninja_passive
+except ImportError:
+    cyberninja_passive = None
 
-__all__ = ["shodan_search", "censys_search", "scrape_urls", "scan_ports"]
+__all__ = ["shodan_search", "censys_search", "scrape_urls", "scan_ports", "cyberninja_passive"]
