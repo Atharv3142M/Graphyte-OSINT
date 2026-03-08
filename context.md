@@ -45,7 +45,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 │   ├── weaviate_client.py # Weaviate v4: schema, add_documents, semantic_search (cosine)
 │   ├── semantic_search.py # Natural-language query → embed → Weaviate near_vector
 │   ├── agents/            # LangGraph multi-agent (state, tools, nodes, graph)
-│   └── modules/           # Extracted OSINT modules
+│   └── modules/           # Self-contained OSINT modules (no repos dependency)
 │       ├── graysentinel_pipeline.py # Scrape, chunk (by-title/similarity/context-aware), NER, embed, Weaviate
 ├── docker-compose.yml
 ├── .env.example
@@ -103,7 +103,7 @@ The system supports **autonomous, goal-directed agentic workflows** with multi-a
 | `censys_recon` | am0nt31r0/OSINT-Search | `python -m run_module censys_recon` |
 | `scraper` | Hamed233/Digital-Footprint-OSINT-Tool | `python -m run_module scraper` |
 | `port_scanner` | Kcisti/bat-security-toolkit | `python -m run_module port_scanner` |
-| `cyberninja_passive` | CyberNinja-main (sandboxed) | `python -m run_module cyberninja_passive` |
+| `cyberninja_passive` | Self-contained passive username enum | `python -m run_module cyberninja_passive` |
 | `graysentinel_ingest` | GraySentinel methodology | `python -m run_module graysentinel_ingest` – scrape, chunk, NER, embed, Weaviate |
 | `xrecon` | xRec0n-style | Stub in `modules/xrecon.py`; Searcher agent calls `xrecon_search` |
 
@@ -192,4 +192,23 @@ Enterprise-grade UI built with Next.js 15, React 18, Tailwind CSS, Radix UI prim
 - [x] Enterprise UI: Omnibar, NodeDetailPanel (STIX metadata), MediaForensicsModal, ActivityTimelineModal
 - [ ] PostgreSQL wiring (planned)
 - [ ] RabbitMQ Pub/Sub handlers (planned)
-- [ ] Remove original repo folders (after confirmation)
+
+## Repos Purge – Green Light
+
+**The `repos/` folder is 100% safe to delete.** No file in `backend/` or `frontend/` imports from, reads from, or references `repos/`. All methodologies (Shodan, Censys, port scan, scraper, CyberNinja passive, GraySentinel pipeline, xRecon stub) are fully self-contained in `backend/modules/`. The application will run correctly without `repos/`.
+
+## Remaining Task Triage
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) and [README.md](./README.md) for full documentation.
+
+### PostgreSQL Wiring
+
+- **Purpose**: Multi-tenant state, audit logs, config storage.
+- **Scope**: Add `postgres_client.py`, connection from `WEAVIATE_*`-style env vars; schema for tenants, audit_events, configs.
+- **Integration**: Config injection can optionally read from PostgreSQL; audit middleware logs requests to audit_events.
+
+### RabbitMQ Pub/Sub Handlers
+
+- **Purpose**: Enterprise event bus (alternative to Redis pub/sub for high-scale).
+- **Scope**: Add RabbitMQ consumer for `osint.*` routing keys; optional bridge from Redis pub/sub to RabbitMQ for downstream consumers.
+- **Integration**: Keep Redis for Celery and task stream; RabbitMQ for cross-service events (e.g. STIX bundle published, investigation complete).

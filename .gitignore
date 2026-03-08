@@ -1,5 +1,4 @@
-# Original source repos (to be deleted later)
-# New project
+# Project
 frontend/node_modules
 frontend/.next
 backend/__pycache__
@@ -8,12 +7,12 @@ backend/**/__pycache__
 .env.local
 *.pyc
 
-# Original source repos (to be deleted later)
-/bat-security-toolkit-main
-/CyberNinja-main
-/Digital-Footprint-OSINT-Tool-main
-/Forensight-main
-/GraySentinel-main
-/OSINT-Search-master
-/TraceGraph-main
-/xRec0n-main
+# Extracted source repos (moved to repos/)
+/repos/bat-security-toolkit-main
+/repos/CyberNinja-main
+/repos/Digital-Footprint-OSINT-Tool-main
+/repos/Forensight-main
+/repos/GraySentinel-main
+/repos/OSINT-Search-master
+/repos/TraceGraph-main
+/repos/xRec0n-main

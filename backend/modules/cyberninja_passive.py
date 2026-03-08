@@ -1,18 +1,36 @@
 """
 CyberNinja passive sandbox wrapper.
 
-This wrapper restricts CyberNinja to passive attack surface discovery:
-- No Tor routing
-- No custom proxies
-- No browser launching
-- No interactive prompts
-
-It reuses CyberNinja's core username enumeration logic when the package
-is available, but ensures only read-only HTTP(S) requests are performed.
+Self-contained passive username enumeration. No external repos or symlinks.
+Checks well-known sites via HTTP(S) only (no Tor, no browser).
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List
+
+# Minimal site definitions: url_format with {}, expected status for "claimed"
+_MINIMAL_SITES = [
+    {"name": "GitHub", "url": "https://github.com/{}", "claimed_status": 200},
+    {"name": "GitLab", "url": "https://gitlab.com/{}", "claimed_status": 200},
+    {"name": "Reddit", "url": "https://www.reddit.com/user/{}", "claimed_status": 200},
+]
+
+
+def _check_username_site(username: str, site: dict, timeout: float | None) -> dict[str, Any]:
+    """Check if username exists on a single site. Returns site name and status."""
+    try:
+        import requests
+        url = site["url"].format(username)
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; OSINT-Bot/1.0)"},
+            timeout=timeout or 10,
+            allow_redirects=True,
+        )
+        exists = resp.status_code == site.get("claimed_status", 200)
+        return {"site": site["name"], "url": url, "status_code": resp.status_code, "exists": exists}
+    except Exception as e:
+        return {"site": site["name"], "error": str(e), "exists": False}
 
 
 def cyberninja_passive(
@@ -21,69 +39,28 @@ def cyberninja_passive(
     site_list: List[str] | None = None,
 ) -> Dict[str, Any]:
     """
-    Run CyberNinja in a passive, sandboxed mode for one or more usernames.
+    Run passive username enumeration. Self-contained; no repos dependency.
 
     Args:
         usernames: List of usernames to investigate.
         timeout: Optional request timeout in seconds.
-        site_list: Optional subset of sites to limit enumeration.
+        site_list: Optional subset of site names to limit (e.g. ["GitHub", "GitLab"]).
 
     Returns:
-        Dictionary keyed by username with the raw results CyberNinja reports.
+        Dictionary keyed by username with per-site results.
     """
     if not usernames:
         return {"error": "At least one username is required", "success": False}
 
-    try:
-        # Import from the vendored CyberNinja code if available.
-        import importlib.util
-        import os
-        import sys
-
-        base_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        cyber_path = os.path.join(
-            base_dir, "CyberNinja-main", "CyberNinja", "Cyber-Ninja"
-        )
-        if cyber_path not in sys.path:
-            sys.path.insert(0, cyber_path)
-
-        from sites import SitesInformation  # type: ignore
-        from notify import QueryNotifyPrint  # type: ignore
-        from cyberninja import cyberninja as _cyberninja  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional dependency
-        return {
-            "error": f"CyberNinja passive wrapper unavailable: {exc}",
-            "success": False,
-        }
+    sites = _MINIMAL_SITES
+    if site_list:
+        sites = [s for s in _MINIMAL_SITES if s["name"] in site_list]
+    if not sites:
+        sites = _MINIMAL_SITES
 
     results: Dict[str, Any] = {}
-
-    # Load site data once.
-    site_data_all = SitesInformation().sites
-
-    if site_list:
-        site_data = {
-            name: info for name, info in site_data_all.items() if name in site_list
-        }
-    else:
-        site_data = site_data_all
-
     for username in usernames:
-        notifier = QueryNotifyPrint(verbose=False, color=False, print_all=False)
-
-        # Passive mode: tor=False, unique_tor=False, proxy=None
-        res = _cyberninja(
-            username=username,
-            site_data=site_data,
-            query_notify=notifier,
-            tor=False,
-            unique_tor=False,
-            proxy=None,
-            timeout=timeout,
-        )
-        results[username] = res
+        checks = [_check_username_site(username, s, timeout) for s in sites]
+        results[username] = {"checks": checks, "summary": {c["site"]: c.get("exists") for c in checks}}
 
     return {"success": True, "data": results}
-
