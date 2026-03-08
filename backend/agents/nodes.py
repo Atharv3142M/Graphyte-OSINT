@@ -153,6 +153,16 @@ def orchestrator_node(state: OSINTAgentState) -> dict[str, Any]:
     else:
         next_agent = "__end__"
 
+    # Publish enterprise events when significant state is reached
+    try:
+        from rabbitmq_client import publish_enterprise_event_sync
+        if stix_bundle:
+            publish_enterprise_event_sync("osint.stix.published", {"goal": goal[:100], "ips": ips[:5]})
+        if threat >= 0.8:
+            publish_enterprise_event_sync("osint.threat.critical", {"threat_score": threat, "goal": goal[:100]})
+    except Exception:
+        pass
+
     return {
         "orchestrator_summary": summary,
         "stix_bundle": stix_bundle,

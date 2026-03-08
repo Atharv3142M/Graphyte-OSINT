@@ -39,7 +39,9 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 │   ├── celery_app.py      # Celery config (Redis broker)
 │   ├── tasks.py           # Subprocess wrapper, async capture, Redis pub, SIGKILL, temp config
 │   ├── run_module.py      # CLI for subprocess (stdin JSON → stdout JSON, reads OSINT_CONFIG_FILE)
-│   ├── config_injection.py# Dynamic, headless config injection (simulated Vault)
+│   ├── config_injection.py# Credentials from PostgreSQL user_configs or env
+│   ├── postgres_client.py # Multi-tenant schema, audit_events, log_audit_event
+│   ├── rabbitmq_client.py# Enterprise event bus (osint_events exchange)
 │   ├── stix_pipeline.py   # STIX 2.1 mapping helpers
 │   ├── neo4j_client.py    # Minimal Neo4j ingestion client
 │   ├── weaviate_client.py # Weaviate v4: schema, add_documents, semantic_search (cosine)
@@ -143,6 +145,9 @@ cd frontend && npm install && npm run dev
 - `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` – Simulated encrypted Censys creds
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` – Neo4j connection for STIX ingestion
 - `WEAVIATE_HTTP_URI` – Weaviate HTTP URL (default `http://localhost:8080`) for semantic search
+- `DATABASE_URL` – PostgreSQL connection string (default from POSTGRES_* vars)
+- `RABBITMQ_URL` – RabbitMQ AMQP URL (default from RABBITMQ_* vars)
+- `DEFAULT_TENANT_ID` – Optional; used by config_injection when fetching from user_configs
 
 ## Frontend
 
@@ -190,25 +195,11 @@ Enterprise-grade UI built with Next.js 15, React 18, Tailwind CSS, Radix UI prim
 - [x] Checkpoint memory for multi-step investigation chains; zero-trust scoped tools per agent
 - [x] POST `/api/agent/investigate` – goal-directed agentic workflow
 - [x] Enterprise UI: Omnibar, NodeDetailPanel (STIX metadata), MediaForensicsModal, ActivityTimelineModal
-- [ ] PostgreSQL wiring (planned)
-- [ ] RabbitMQ Pub/Sub handlers (planned)
+- [x] PostgreSQL wiring: postgres_client.py, tenants/user_configs/audit_events, config_injection from user_configs, log_audit_event
+- [x] RabbitMQ: osint_events topic exchange, publish_enterprise_event, background consumer → audit_events
+- [x] repos/ folder deleted – fully independent application
 
-## Repos Purge – Green Light
+## PostgreSQL & RabbitMQ Integration
 
-**The `repos/` folder is 100% safe to delete.** No file in `backend/` or `frontend/` imports from, reads from, or references `repos/`. All methodologies (Shodan, Censys, port scan, scraper, CyberNinja passive, GraySentinel pipeline, xRecon stub) are fully self-contained in `backend/modules/`. The application will run correctly without `repos/`.
-
-## Remaining Task Triage
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) and [README.md](./README.md) for full documentation.
-
-### PostgreSQL Wiring
-
-- **Purpose**: Multi-tenant state, audit logs, config storage.
-- **Scope**: Add `postgres_client.py`, connection from `WEAVIATE_*`-style env vars; schema for tenants, audit_events, configs.
-- **Integration**: Config injection can optionally read from PostgreSQL; audit middleware logs requests to audit_events.
-
-### RabbitMQ Pub/Sub Handlers
-
-- **Purpose**: Enterprise event bus (alternative to Redis pub/sub for high-scale).
-- **Scope**: Add RabbitMQ consumer for `osint.*` routing keys; optional bridge from Redis pub/sub to RabbitMQ for downstream consumers.
-- **Integration**: Keep Redis for Celery and task stream; RabbitMQ for cross-service events (e.g. STIX bundle published, investigation complete).
+- **PostgreSQL**: `postgres_client.py` – schema (tenants, user_configs, audit_events), `fetch_service_credentials`, `log_audit_event`. Config injection queries user_configs (fallback to env). All API endpoints log audit events on initiation.
+- **RabbitMQ**: `rabbitmq_client.py` – `publish_enterprise_event_sync` to `osint_events` topic. Routing keys: `osint.investigation.started`, `osint.investigation.completed`, `osint.stix.published`, `osint.threat.critical`. Background consumer subscribes to `osint.#` and logs to audit_events.

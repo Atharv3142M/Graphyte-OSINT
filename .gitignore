@@ -7,12 +7,4 @@ backend/**/__pycache__
 .env.local
 *.pyc
 
-# Extracted source repos (moved to repos/)
-/repos/bat-security-toolkit-main
-/repos/CyberNinja-main
-/repos/Digital-Footprint-OSINT-Tool-main
-/repos/Forensight-main
-/repos/GraySentinel-main
-/repos/OSINT-Search-master
-/repos/TraceGraph-main
-/repos/xRec0n-main
+# repos/ deleted – application is fully independent
