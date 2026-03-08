@@ -53,6 +53,16 @@ class PortScannerRequest(BaseModel):
     timeout: float = 2.0
 
 
+class IngestRequest(BaseModel):
+    urls: list[str]
+    strategies: list[str] | None = None
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str
+    limit: int = 10
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -100,6 +110,24 @@ def api_port_scan(req: PortScannerRequest):
         "stream_url": f"/ws/task/{t.id}",
         "result_url": f"/api/tasks/{t.id}",
     }
+
+
+@app.post("/api/ingest")
+def api_ingest(req: IngestRequest):
+    """Ingest URLs via GraySentinel pipeline (scrape, chunk, NER, embed, Weaviate)."""
+    from modules.graysentinel_pipeline import run_pipeline
+    return run_pipeline(req.urls, req.strategies)
+
+
+@app.post("/api/semantic-search")
+def api_semantic_search(req: SemanticSearchRequest):
+    """Natural language query -> cosine similarity search -> contextual documents."""
+    try:
+        from semantic_search import search
+        results = search(req.query, limit=req.limit)
+        return {"success": True, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 @app.get("/api/graph")

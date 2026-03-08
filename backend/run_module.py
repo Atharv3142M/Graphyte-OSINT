@@ -74,6 +74,12 @@ def main() -> None:
             payload.get("max_workers", 20),
             payload.get("timeout", 2.0),
         )
+    elif module_name == "graysentinel_ingest":
+        from modules.graysentinel_pipeline import run_pipeline
+        result = run_pipeline(
+            payload.get("urls", []),
+            payload.get("strategies"),
+        )
     elif module_name == "cyberninja_passive":
         try:
             from modules.cyberninja_passive import cyberninja_passive

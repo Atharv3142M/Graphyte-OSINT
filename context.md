@@ -22,7 +22,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | **Redis** | Celery broker + task stream pub/sub | 6379 |
 | **RabbitMQ** | Enterprise Pub/Sub event bus | 5672 (AMQP), 15672 (Mgmt) |
 | **Neo4j** | Graph DB for STIX data | 7474 (HTTP), 7687 (Bolt) |
-| **Weaviate** | Vector DB | 8080, 50051 |
+| **Weaviate** | Vector DB (semantic search, GraySentinel) | 8080, 50051 |
 | **PostgreSQL** | Configs, multi-tenant, audit logs | 5432 |
 
 ## Project Structure
@@ -40,7 +40,10 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 │   ├── config_injection.py# Dynamic, headless config injection (simulated Vault)
 │   ├── stix_pipeline.py   # STIX 2.1 mapping helpers
 │   ├── neo4j_client.py    # Minimal Neo4j ingestion client
-│   └── modules/           # Extracted OSINT modules (invoked via subprocess)
+│   ├── weaviate_client.py # Weaviate v4: schema, add_documents, semantic_search (cosine)
+│   ├── semantic_search.py # Natural-language query → embed → Weaviate near_vector
+│   └── modules/           # Extracted OSINT modules
+│       ├── graysentinel_pipeline.py # Scrape, chunk (by-title/similarity/context-aware), NER, embed, Weaviate
 ├── docker-compose.yml
 ├── .env.example
 └── context.md
@@ -54,9 +57,21 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | POST | `/api/censys` | `{ "target", "api_id"?,"api_secret"? }` |
 | POST | `/api/scrape` | `{ "urls", "max_workers"? }` |
 | POST | `/api/port-scan` | `{ "host", "ports"?,"max_workers"?,"timeout"? }` |
+| POST | `/api/ingest` | `{ "urls", "strategies"? }` – GraySentinel pipeline, store in Weaviate |
+| POST | `/api/semantic-search` | `{ "query", "limit"? }` – Natural-language → cosine similarity |
 | GET | `/api/tasks/{task_id}` | Poll task result |
 | GET | `/api/graph` | Cytoscape elements (nodes/edges) from Neo4j |
 | WebSocket | `/ws/task/{task_id}` | Real-time stdout/stderr stream |
+
+## GraySentinel / Semantic Search
+
+Traditional boolean search is insufficient for massive unstructured text (e.g. leaked forums, corporate docs). The GraySentinel methodology provides:
+
+1. **Weaviate** – Vector DB with cosine similarity search.
+2. **Extraction pipeline** (`modules/graysentinel_pipeline.py`) – Scrapes deep-web URLs (requests + BeautifulSoup), chunks text, extracts named entities, generates embeddings via sentence-transformers (`all-MiniLM-L6-v2`), stores in Weaviate.
+3. **Chunking** – Three strategies: chunk-by-title (split on h1/h2/h3), similarity-based (sliding window with overlap), context-aware (paragraph-boundary aware).
+4. **NER** – Metadata enrichment with regex-based extraction of emails, IPs, domains, phone numbers before embedding.
+5. **Natural-language query** – POST `/api/semantic-search` embeds the query, performs `near_vector` cosine search, returns contextual documents with `content`, `source_url`, `chunk_strategy`, `named_entities`, `distance`.
 
 ## Extracted Modules (backend/modules/)
 
@@ -67,6 +82,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | `scraper` | Hamed233/Digital-Footprint-OSINT-Tool | `python -m run_module scraper` |
 | `port_scanner` | Kcisti/bat-security-toolkit | `python -m run_module port_scanner` |
 | `cyberninja_passive` | CyberNinja-main (sandboxed) | `python -m run_module cyberninja_passive` |
+| `graysentinel_ingest` | GraySentinel methodology | `python -m run_module graysentinel_ingest` – scrape, chunk, NER, embed, Weaviate |
 
 ## Run
 
@@ -92,6 +108,7 @@ cd frontend && npm install && npm run dev
 - `VAULT_SHODAN_API_KEY` – Simulated encrypted Shodan key (used by config injection)
 - `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` – Simulated encrypted Censys creds
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` – Neo4j connection for STIX ingestion
+- `WEAVIATE_HTTP_URI` – Weaviate HTTP URL (default `http://localhost:8080`) for semantic search
 
 ## Frontend
 
@@ -116,6 +133,9 @@ cd frontend && npm install && npm run dev
 - [x] Dynamic config injection (temp files, simulated Vault)
 - [x] CyberNinja passive sandbox wrapper
 - [x] STIX 2.1 mapping helpers + Neo4j client
-- [ ] Weaviate/PostgreSQL wiring (planned)
+- [x] Weaviate integration: schema (OSINTDocument), add_documents, semantic_search (cosine)
+- [x] GraySentinel pipeline: scrape → chunk (by-title, similarity-based, context-aware) → NER → embed (sentence-transformers) → Weaviate
+- [x] POST `/api/ingest`, POST `/api/semantic-search` – natural-language semantic search
+- [ ] PostgreSQL wiring (planned)
 - [ ] RabbitMQ Pub/Sub handlers (planned)
 - [ ] Remove original repo folders (after confirmation)
