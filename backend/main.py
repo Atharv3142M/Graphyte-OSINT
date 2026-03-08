@@ -102,6 +102,19 @@ def api_port_scan(req: PortScannerRequest):
     }
 
 
+@app.get("/api/graph")
+def get_graph():
+    """Fetch STIX graph from Neo4j in Cytoscape format."""
+    try:
+        from neo4j_client import Neo4jClient
+        client = Neo4jClient()
+        data = client.get_graph_cytoscape()
+        client.close()
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @app.get("/api/tasks/{task_id}")
 def get_task_result(task_id: str):
     from celery_app import celery_app

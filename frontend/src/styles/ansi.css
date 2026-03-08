@@ -1,0 +1,19 @@
+/* ANSI color classes used by anser */
+.ansi-black-fg { color: #333; }
+.ansi-red-fg { color: #e74c3c; }
+.ansi-green-fg { color: #2ecc71; }
+.ansi-yellow-fg { color: #f1c40f; }
+.ansi-blue-fg { color: #3498db; }
+.ansi-magenta-fg { color: #9b59b6; }
+.ansi-cyan-fg { color: #1abc9c; }
+.ansi-white-fg { color: #ecf0f1; }
+.ansi-gray-fg { color: #95a5a6; }
+.ansi-bright-black-fg { color: #7f8c8d; }
+.ansi-bright-red-fg { color: #e74c3c; }
+.ansi-bright-green-fg { color: #2ecc71; }
+.ansi-bright-yellow-fg { color: #f1c40f; }
+.ansi-bright-blue-fg { color: #3498db; }
+.ansi-bright-magenta-fg { color: #9b59b6; }
+.ansi-bright-cyan-fg { color: #1abc9c; }
+.ansi-bright-white-fg { color: #fff; }
+.ansi-bold { font-weight: bold; }

@@ -29,7 +29,9 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 
 ```
 ├── frontend/              # Next.js 15, React 18, TypeScript
-│   └── src/app/           # Dashboard with WebSocket stream
+│   ├── src/app/           # Dashboard layout, page
+│   ├── src/components/    # VirtualTerminal (ANSI), StixGraph (Cytoscape)
+│   └── src/styles/        # ansi.css for terminal colors
 ├── backend/
 │   ├── main.py            # Dispatcher, WebSocket, no OSINT execution
 │   ├── celery_app.py      # Celery config (Redis broker)
@@ -53,6 +55,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | POST | `/api/scrape` | `{ "urls", "max_workers"? }` |
 | POST | `/api/port-scan` | `{ "host", "ports"?,"max_workers"?,"timeout"? }` |
 | GET | `/api/tasks/{task_id}` | Poll task result |
+| GET | `/api/graph` | Cytoscape elements (nodes/edges) from Neo4j |
 | WebSocket | `/ws/task/{task_id}` | Real-time stdout/stderr stream |
 
 ## Extracted Modules (backend/modules/)
@@ -90,6 +93,13 @@ cd frontend && npm install && npm run dev
 - `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` – Simulated encrypted Censys creds
 - `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` – Neo4j connection for STIX ingestion
 
+## Frontend
+
+- **Dashboard** – Sidebar tools, tabbed panels (Terminal | Graph | Result)
+- **VirtualTerminal** – ANSI escape code parsing (anser) for colorized logs; listens to WebSocket
+- **StixGraph** – Cytoscape.js canvas renderer (GPU-composited) for large graphs; leaf-prune toggle to hide leaf nodes and reduce cognitive load
+- **UI/UX** – Tailwind, responsive layout, clear affordances
+
 ## Status
 
 - [x] FastAPI as command dispatcher (no direct OSINT execution)
@@ -98,7 +108,10 @@ cd frontend && npm install && npm run dev
 - [x] Async stdout/stderr capture → Redis pub
 - [x] WebSocket `/ws/task/{task_id}` → real-time stream
 - [x] Hard timeout + SIGKILL on hang
-- [x] Frontend WebSocket client
+- [x] Frontend dashboard (Next.js 15, sidebar, tabs)
+- [x] Virtual terminal with ANSI colorization
+- [x] Cytoscape.js graph visualization (canvas, leaf-prune toggle)
+- [x] GET `/api/graph` for Neo4j → Cytoscape
 - [x] docker-compose, .env.example
 - [x] Dynamic config injection (temp files, simulated Vault)
 - [x] CyberNinja passive sandbox wrapper

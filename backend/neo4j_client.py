@@ -31,6 +31,43 @@ class Neo4jClient:
             for obj in objects:
                 session.execute_write(_merge_object, obj)
 
+    def get_graph_cytoscape(self) -> Dict[str, Any]:
+        """
+        Fetch all Stix nodes and relationships as Cytoscape elements format.
+        Returns { elements: { nodes: [...], edges: [...] } }.
+        """
+        nodes_out: list[Dict[str, Any]] = []
+        edges_out: list[Dict[str, Any]] = []
+        with self._driver.session() as session:
+            nodes_result = session.run("MATCH (n:Stix) RETURN n")
+            for record in nodes_result:
+                node = record["n"]
+                if node is None:
+                    continue
+                stix_id = node.get("id") or str(node.element_id)
+                stix_type = node.get("type") or "unknown"
+                label = node.get("value") or node.get("abstract")
+                if label is None and isinstance(node.get("content"), dict):
+                    label = node.get("content", {}).get("abstract")
+                if label is None:
+                    label = stix_type
+                label = str(label)[:80]
+                nodes_out.append({
+                    "data": {"id": stix_id, "label": label, "type": stix_type},
+                    "classes": stix_type.replace("-", "_"),
+                })
+            edges_result = session.run(
+                "MATCH (a:Stix)-[r]->(b:Stix) RETURN a.id AS src, b.id AS tgt, id(r) AS rid"
+            )
+            for record in edges_result:
+                src = record.get("src")
+                tgt = record.get("tgt")
+                if src and tgt:
+                    edges_out.append({
+                        "data": {"id": f"e-{record.get('rid', len(edges_out))}", "source": src, "target": tgt},
+                    })
+        return {"elements": {"nodes": nodes_out, "edges": edges_out}}
+
 
 def _merge_object(tx, obj: Dict[str, Any]) -> None:
     obj_id = obj.get("id")
