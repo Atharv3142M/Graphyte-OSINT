@@ -203,3 +203,14 @@ Enterprise-grade UI built with Next.js 15, React 18, Tailwind CSS, Radix UI prim
 
 - **PostgreSQL**: `postgres_client.py` – schema (tenants, user_configs, audit_events), `fetch_service_credentials`, `log_audit_event`. Config injection queries user_configs (fallback to env). All API endpoints log audit events on initiation.
 - **RabbitMQ**: `rabbitmq_client.py` – `publish_enterprise_event_sync` to `osint_events` topic. Routing keys: `osint.investigation.started`, `osint.investigation.completed`, `osint.stix.published`, `osint.threat.critical`. Background consumer subscribes to `osint.#` and logs to audit_events.
+
+
+
+
+docker compose up -d
+cd backend && pip install -r requirements.txt
+python scripts/check_services.py   # verify all 5 services
+python scripts/seed_db.py          # seed default tenant + configs
+uvicorn main:app --reload          # Terminal 1
+celery -A celery_app worker -l info # Terminal 2
+python scripts/simulate_investigation.py  # run E2E
