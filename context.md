@@ -28,9 +28,11 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 ## Project Structure
 
 ```
-├── frontend/              # Next.js 15, React 18, TypeScript
-│   ├── src/app/           # Dashboard layout, page
-│   ├── src/components/    # VirtualTerminal (ANSI), StixGraph (Cytoscape)
+├── frontend/              # Next.js 15, React 18, TypeScript, Tailwind, Radix UI
+│   ├── src/app/           # layout, page (dashboard)
+│   ├── src/components/    # Sidebar, Omnibar, GraphCanvas, NodeDetailPanel,
+│   │                      # ResizableTerminal, MediaForensicsModal, ActivityTimelineModal
+│   ├── src/lib/           # utils (cn)
 │   └── src/styles/        # ansi.css for terminal colors
 ├── backend/
 │   ├── main.py            # Dispatcher, WebSocket, no OSINT execution
@@ -144,10 +146,26 @@ cd frontend && npm install && npm run dev
 
 ## Frontend
 
-- **Dashboard** – Sidebar tools, tabbed panels (Terminal | Graph | Result)
-- **VirtualTerminal** – ANSI escape code parsing (anser) for colorized logs; listens to WebSocket
-- **StixGraph** – Cytoscape.js canvas renderer (GPU-composited) for large graphs; leaf-prune toggle to hide leaf nodes and reduce cognitive load
-- **UI/UX** – Tailwind, responsive layout, clear affordances
+Enterprise-grade UI built with Next.js 15, React 18, Tailwind CSS, Radix UI primitives, and Lucide icons. Dark-mode optimized (slate/zinc) with strategic neon accents: cyan for connections, amber for warnings, red for critical vulnerabilities.
+
+### Layout & Components
+
+1. **Global Navigation (Sidebar)** – Dashboard, Graph Explorer, Spatial Intelligence, Media Forensics, Reports, Secure Settings.
+2. **Unified Omnibar** – Prominent target input (Email, Domain, IP, Phone) with workflow dropdown: Low (passive), Standard (Shodan/Censys/scrape), Aggressive (port scan + CyberNinja), Agent (LangGraph multi-agent).
+3. **Main Canvas (Graph View)** – Interactive Cytoscape.js node/edge graph with:
+   - Floating toolbar: Zoom in/out, Fit to view, Force-directed layout toggle, Leaf-prune switch
+   - Vulnerability badges on server nodes (red border)
+   - Node click → detail panel
+4. **Progressive Disclosure Panel (Right)** – Slides out on node click; shows STIX 2.1 metadata, risk scores, entity resolution, keeping the canvas uncluttered.
+5. **Resizable Virtual Terminal (Bottom)** – Drag handle to resize; ANSI colorization for live streaming logs.
+6. **Media Forensics Modal** – Image forensics with interactive bounding boxes (faces: cyan, objects: amber).
+7. **Activity Timeline Modal** – Chronological bar chart of network activity frequency.
+
+### Design Principles
+
+- Progressive disclosure: macro-level summary first, detail on demand
+- Muted dark theme (slate-950, zinc) with cyan/amber/red accents for KPIs
+- High information density without cognitive overload
 
 ## Status
 
@@ -157,9 +175,9 @@ cd frontend && npm install && npm run dev
 - [x] Async stdout/stderr capture → Redis pub
 - [x] WebSocket `/ws/task/{task_id}` → real-time stream
 - [x] Hard timeout + SIGKILL on hang
-- [x] Frontend dashboard (Next.js 15, sidebar, tabs)
-- [x] Virtual terminal with ANSI colorization
-- [x] Cytoscape.js graph visualization (canvas, leaf-prune toggle)
+- [x] Frontend dashboard (Next.js 15, sidebar, Omnibar, graph canvas)
+- [x] Virtual terminal with ANSI colorization (resizable)
+- [x] Cytoscape.js graph (floating toolbar, zoom, force-directed, leaf-prune, vulnerability badges)
 - [x] GET `/api/graph` for Neo4j → Cytoscape
 - [x] docker-compose, .env.example
 - [x] Dynamic config injection (temp files, simulated Vault)
@@ -171,6 +189,7 @@ cd frontend && npm install && npm run dev
 - [x] LangGraph multi-agent orchestration (Searcher, Analyzer, Pentester, Orchestrator)
 - [x] Checkpoint memory for multi-step investigation chains; zero-trust scoped tools per agent
 - [x] POST `/api/agent/investigate` – goal-directed agentic workflow
+- [x] Enterprise UI: Omnibar, NodeDetailPanel (STIX metadata), MediaForensicsModal, ActivityTimelineModal
 - [ ] PostgreSQL wiring (planned)
 - [ ] RabbitMQ Pub/Sub handlers (planned)
 - [ ] Remove original repo folders (after confirmation)
