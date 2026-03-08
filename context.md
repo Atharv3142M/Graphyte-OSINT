@@ -42,6 +42,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 │   ├── neo4j_client.py    # Minimal Neo4j ingestion client
 │   ├── weaviate_client.py # Weaviate v4: schema, add_documents, semantic_search (cosine)
 │   ├── semantic_search.py # Natural-language query → embed → Weaviate near_vector
+│   ├── agents/            # LangGraph multi-agent (state, tools, nodes, graph)
 │   └── modules/           # Extracted OSINT modules
 │       ├── graysentinel_pipeline.py # Scrape, chunk (by-title/similarity/context-aware), NER, embed, Weaviate
 ├── docker-compose.yml
@@ -59,6 +60,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 | POST | `/api/port-scan` | `{ "host", "ports"?,"max_workers"?,"timeout"? }` |
 | POST | `/api/ingest` | `{ "urls", "strategies"? }` – GraySentinel pipeline, store in Weaviate |
 | POST | `/api/semantic-search` | `{ "query", "limit"? }` – Natural-language → cosine similarity |
+| POST | `/api/agent/investigate` | `{ "goal", "thread_id"? }` – LangGraph multi-agent investigation (memory-backed) |
 | GET | `/api/tasks/{task_id}` | Poll task result |
 | GET | `/api/graph` | Cytoscape elements (nodes/edges) from Neo4j |
 | WebSocket | `/ws/task/{task_id}` | Real-time stdout/stderr stream |
@@ -73,6 +75,24 @@ Traditional boolean search is insufficient for massive unstructured text (e.g. l
 4. **NER** – Metadata enrichment with regex-based extraction of emails, IPs, domains, phone numbers before embedding.
 5. **Natural-language query** – POST `/api/semantic-search` embeds the query, performs `near_vector` cosine search, returns contextual documents with `content`, `source_url`, `chunk_strategy`, `named_entities`, `distance`.
 
+## Multi-Agent Orchestration (LangGraph)
+
+The system supports **autonomous, goal-directed agentic workflows** with multi-agent orchestration:
+
+1. **LangGraph** – Stateful, graph-based framework. The graph is: `START → Orchestrator → (Searcher | Analyzer | Pentester) → Orchestrator → … → END`. Each sub-agent returns to the Orchestrator for routing.
+
+2. **Four agent roles (zero-trust scoped tools)**  
+   - **Searcher Agent** – Web lookups only. Allowed tools: `shodan_search`, `censys_search`, `scrape_urls`, `xrecon_search` (OSINT-Search + xRecon modules).  
+   - **Analyzer Agent** – Semantic/threat only. Allowed tools: `semantic_search`, `graysentinel_ingest`, `score_threat` (GraySentinel semantic anomalies and threat risk scoring).  
+   - **Pentester Agent** – Scanning only. Allowed tools: `port_scan`, `cyberninja_passive` (CyberNinja + bat-security-toolkit).  
+   - **Orchestrator Agent** – No tools. Synthesizes results, triggers sub-agents via conditional edges, and produces STIX 2.1-compliant output.
+
+3. **Memory** – Checkpoint memory (e.g. `MemorySaver` / `InMemorySaver`) persists state per `thread_id` so agents maintain context across multi-step investigation chains. Use the same `thread_id` to resume or continue an investigation.
+
+4. **Zero-trust** – Sub-agents only receive and can only call their role-specific tools (see `backend/agents/tools/`). The Orchestrator never executes tools; it only routes and builds STIX.
+
+5. **API** – POST `/api/agent/investigate` with `{ "goal": "natural language objective", "thread_id": "optional" }` runs the graph and returns `summary`, `threat_score`, `stix_bundle`, and `investigation_context`.
+
 ## Extracted Modules (backend/modules/)
 
 | Module | Source | Invoked via |
@@ -83,6 +103,18 @@ Traditional boolean search is insufficient for massive unstructured text (e.g. l
 | `port_scanner` | Kcisti/bat-security-toolkit | `python -m run_module port_scanner` |
 | `cyberninja_passive` | CyberNinja-main (sandboxed) | `python -m run_module cyberninja_passive` |
 | `graysentinel_ingest` | GraySentinel methodology | `python -m run_module graysentinel_ingest` – scrape, chunk, NER, embed, Weaviate |
+| `xrecon` | xRec0n-style | Stub in `modules/xrecon.py`; Searcher agent calls `xrecon_search` |
+
+## Backend Agents (LangGraph)
+
+| Component | Path | Description |
+|-----------|------|-------------|
+| State | `agents/state.py` | `OSINTAgentState`: goal, per-agent results, discovered_ips, threat_score, stix_bundle, investigation_context |
+| Searcher tools | `agents/tools/searcher_tools.py` | shodan_search, censys_search, scrape_urls, xrecon_search |
+| Analyzer tools | `agents/tools/analyzer_tools.py` | semantic_search, graysentinel_ingest, score_threat |
+| Pentester tools | `agents/tools/pentester_tools.py` | port_scan, cyberninja_passive |
+| Nodes | `agents/nodes.py` | searcher_node, analyzer_node, pentester_node, orchestrator_node |
+| Graph | `agents/graph.py` | `build_osint_graph(use_memory=True)` with checkpoint memory |
 
 ## Run
 
@@ -136,6 +168,9 @@ cd frontend && npm install && npm run dev
 - [x] Weaviate integration: schema (OSINTDocument), add_documents, semantic_search (cosine)
 - [x] GraySentinel pipeline: scrape → chunk (by-title, similarity-based, context-aware) → NER → embed (sentence-transformers) → Weaviate
 - [x] POST `/api/ingest`, POST `/api/semantic-search` – natural-language semantic search
+- [x] LangGraph multi-agent orchestration (Searcher, Analyzer, Pentester, Orchestrator)
+- [x] Checkpoint memory for multi-step investigation chains; zero-trust scoped tools per agent
+- [x] POST `/api/agent/investigate` – goal-directed agentic workflow
 - [ ] PostgreSQL wiring (planned)
 - [ ] RabbitMQ Pub/Sub handlers (planned)
 - [ ] Remove original repo folders (after confirmation)

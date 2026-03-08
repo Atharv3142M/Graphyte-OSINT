@@ -13,3 +13,5 @@ phonenumbers>=8.13.0
 weaviate-client>=4.0.0
 sentence-transformers>=2.2.0
 fake-useragent>=1.1.0
+langgraph>=0.2.0
+langchain-core>=0.3.0

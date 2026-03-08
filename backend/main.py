@@ -63,6 +63,11 @@ class SemanticSearchRequest(BaseModel):
     limit: int = 10
 
 
+class AgentInvestigateRequest(BaseModel):
+    goal: str
+    thread_id: str | None = None
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -126,6 +131,32 @@ def api_semantic_search(req: SemanticSearchRequest):
         from semantic_search import search
         results = search(req.query, limit=req.limit)
         return {"success": True, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.post("/api/agent/investigate")
+def api_agent_investigate(req: AgentInvestigateRequest):
+    """
+    Run goal-directed multi-agent investigation (LangGraph).
+    Orchestrator -> Searcher | Analyzer | Pentester with checkpoint memory.
+    Pass thread_id to resume or continue a prior investigation chain.
+    """
+    try:
+        from agents.graph import build_osint_graph
+        graph = build_osint_graph(use_memory=True)
+        thread_id = req.thread_id or f"inv-{os.urandom(8).hex()}"
+        config = {"configurable": {"thread_id": thread_id}}
+        initial: dict = {"goal": req.goal, "investigation_context": [], "messages": []}
+        result = graph.invoke(initial, config=config)
+        return {
+            "success": True,
+            "thread_id": thread_id,
+            "summary": result.get("orchestrator_summary"),
+            "threat_score": result.get("threat_score"),
+            "stix_bundle": result.get("stix_bundle"),
+            "investigation_context": result.get("investigation_context", []),
+        }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
 
