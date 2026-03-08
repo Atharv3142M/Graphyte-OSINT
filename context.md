@@ -35,7 +35,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 │   ├── src/lib/           # utils (cn)
 │   └── src/styles/        # ansi.css for terminal colors
 ├── backend/
-│   ├── main.py            # Dispatcher, WebSocket, no OSINT execution
+│   ├── api.py             # FastAPI dispatcher, WebSocket, no OSINT execution
 │   ├── celery_app.py      # Celery config (Redis broker)
 │   ├── tasks.py           # Subprocess wrapper, async capture, Redis pub, SIGKILL, temp config
 │   ├── run_module.py      # CLI for subprocess (stdin JSON → stdout JSON, reads OSINT_CONFIG_FILE)
@@ -122,17 +122,31 @@ The system supports **autonomous, goal-directed agentic workflows** with multi-a
 
 ## Run
 
+### One-command DX Flow
+
 ```bash
 cp .env.example .env
 docker compose up -d
 
 cd backend && pip install -r requirements.txt
 
-# Terminal 1: FastAPI
-uvicorn main:app --reload
+# Unified verification (infra + seed + dry-run E2E)
+python ../verify.py
 
-# Terminal 2: Celery worker
-celery -A celery_app worker --loglevel=info
+# Master orchestrator (backend + Celery + frontend)
+cd ..
+python main.py
+```
+
+### Legacy manual flow (optional)
+
+```bash
+cp .env.example .env
+docker compose up -d
+
+cd backend && pip install -r requirements.txt
+uvicorn api:app --reload           # FastAPI
+celery -A celery_app worker -l info  # Celery
 
 cd frontend && npm install && npm run dev
 ```

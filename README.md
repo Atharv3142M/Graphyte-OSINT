@@ -38,22 +38,22 @@ cd backend
 pip install -r requirements.txt
 ```
 
-**Terminal 1 – FastAPI:**
-```bash
-uvicorn main:app --reload
-```
+### 4. Unified Verification & Orchestrator
 
-**Terminal 2 – Celery worker:**
-```bash
-celery -A celery_app worker --loglevel=info
-```
-
-### 4. Frontend
+From the project root:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cp .env.example .env
+docker compose up -d
+
+cd backend && pip install -r requirements.txt
+cd ..
+
+# 1) Verify infra, seed DB, and run a dry-run E2E
+python verify.py
+
+# 2) Start backend (FastAPI), Celery worker, and frontend together
+python main.py
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
