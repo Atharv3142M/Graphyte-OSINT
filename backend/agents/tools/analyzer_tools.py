@@ -21,7 +21,7 @@ def semantic_search(query: str, limit: int = 10) -> dict[str, Any]:
 
 def graysentinel_ingest(urls: list[str], strategies: list[str] | None = None) -> dict[str, Any]:
     """Ingest URLs via GraySentinel pipeline. Analyzer-only."""
-    from modules.graysentinel_pipeline import run_pipeline
+    from backend.modules.graysentinel_pipeline import run_pipeline
     return run_pipeline(urls, strategies)
 
 

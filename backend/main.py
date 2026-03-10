@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from redis import Redis
 
-from tasks import task_shodan, task_censys, task_scrape, task_port_scan
+from backend.tasks import task_shodan, task_censys, task_scrape, task_port_scan
 
 
 def _log_audit(tenant_id: Optional[str], action: str, target: Optional[str] = None, status: str = "initiated") -> None:
@@ -211,8 +211,11 @@ def api_port_scan(req: PortScannerRequest, x_tenant_id: Optional[str] = Header(N
 def api_ingest(req: IngestRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Ingest URLs via GraySentinel pipeline (scrape, chunk, NER, embed, Weaviate)."""
     _log_audit(x_tenant_id, "graysentinel_ingest", ",".join(req.urls[:3]) if req.urls else None, "initiated")
-    _publish_event("osint.investigation.started", {"action": "graysentinel_ingest", "target": ",".join(req.urls[:3]) if req.urls else ""})
-    from modules.graysentinel_pipeline import run_pipeline
+    _publish_event(
+        "osint.investigation.started",
+        {"action": "graysentinel_ingest", "target": ",".join(req.urls[:3]) if req.urls else ""},
+    )
+    from backend.modules.graysentinel_pipeline import run_pipeline
     return run_pipeline(req.urls, req.strategies)
 
 
@@ -237,7 +240,7 @@ def api_agent_investigate(req: AgentInvestigateRequest, x_tenant_id: Optional[st
     _log_audit(x_tenant_id, "agent_investigate", req.goal[:200] if req.goal else None, "initiated")
     _publish_event("osint.investigation.started", {"action": "agent_investigate", "goal": req.goal[:200] if req.goal else ""})
     try:
-        from agents.graph import build_osint_graph
+        from backend.agents.graph import build_osint_graph
         graph = build_osint_graph(use_memory=True)
         thread_id = req.thread_id or f"inv-{os.urandom(8).hex()}"
         config = {"configurable": {"thread_id": thread_id}}
@@ -265,7 +268,7 @@ def api_agent_investigate(req: AgentInvestigateRequest, x_tenant_id: Optional[st
 def get_graph():
     """Fetch STIX graph from Neo4j in Cytoscape format."""
     try:
-        from neo4j_client import Neo4jClient
+        from backend.neo4j_client import Neo4jClient
         client = Neo4jClient()
         data = client.get_graph_cytoscape()
         client.close()
@@ -276,7 +279,7 @@ def get_graph():
 
 @app.get("/api/tasks/{task_id}")
 def get_task_result(task_id: str):
-    from celery_app import celery_app
+    from backend.celery_app import celery_app
     r = celery_app.AsyncResult(task_id)
     if r.ready():
         return {"task_id": task_id, "status": r.status, "result": r.result}

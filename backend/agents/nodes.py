@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.state import OSINTAgentState
-from agents.tools.searcher_tools import get_searcher_tools
-from agents.tools.analyzer_tools import get_analyzer_tools
-from agents.tools.pentester_tools import get_pentester_tools
+from backend.agents.state import OSINTAgentState
+from backend.agents.tools.searcher_tools import get_searcher_tools
+from backend.agents.tools.analyzer_tools import get_analyzer_tools
+from backend.agents.tools.pentester_tools import get_pentester_tools
 
 
 def _ctx(state: OSINTAgentState) -> list[dict[str, Any]]:

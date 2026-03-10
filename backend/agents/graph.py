@@ -12,8 +12,8 @@ try:
 except ImportError:
     from langgraph.checkpoint.memory import InMemorySaver as MemorySaver
 
-from agents.state import OSINTAgentState
-from agents.nodes import orchestrator_node, searcher_node, analyzer_node, pentester_node
+from backend.agents.state import OSINTAgentState
+from backend.agents.nodes import orchestrator_node, searcher_node, analyzer_node, pentester_node
 
 
 def _route_orchestrator(state: OSINTAgentState) -> Literal["searcher", "analyzer", "pentester", "__end__"]:

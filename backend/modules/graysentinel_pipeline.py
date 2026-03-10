@@ -155,7 +155,7 @@ def run_pipeline(
         return {"success": False, "error": str(e), "ingested": 0}
 
     try:
-        from weaviate_client import _connect, ensure_schema, add_documents
+        from backend.weaviate_client import _connect, ensure_schema, add_documents
         client = _connect()
         ensure_schema(client)
         add_documents(client, all_chunks, vectors)

@@ -41,7 +41,7 @@ def main() -> None:
     service_config = _load_service_config()
 
     if module_name == "shodan_recon":
-        from modules.shodan_recon import shodan_search
+        from backend.modules.shodan_recon import shodan_search
 
         api_key = service_config.get("api_key") or payload.get("api_key")
         result = shodan_search(
@@ -49,7 +49,7 @@ def main() -> None:
             api_key,
         )
     elif module_name == "censys_recon":
-        from modules.censys_recon import censys_search
+        from backend.modules.censys_recon import censys_search
 
         api_id = service_config.get("api_id") or payload.get("api_id")
         api_secret = service_config.get("api_secret") or payload.get("api_secret")
@@ -59,14 +59,14 @@ def main() -> None:
             api_secret,
         )
     elif module_name == "scraper":
-        from modules.scraper import scrape_urls
+        from backend.modules.scraper import scrape_urls
 
         result = scrape_urls(
             payload.get("urls", []),
             payload.get("max_workers", 5),
         )
     elif module_name == "port_scanner":
-        from modules.port_scanner import scan_ports
+        from backend.modules.port_scanner import scan_ports
 
         result = scan_ports(
             payload.get("host", ""),
@@ -75,14 +75,14 @@ def main() -> None:
             payload.get("timeout", 2.0),
         )
     elif module_name == "graysentinel_ingest":
-        from modules.graysentinel_pipeline import run_pipeline
+        from backend.modules.graysentinel_pipeline import run_pipeline
         result = run_pipeline(
             payload.get("urls", []),
             payload.get("strategies"),
         )
     elif module_name == "cyberninja_passive":
         try:
-            from modules.cyberninja_passive import cyberninja_passive
+            from backend.modules.cyberninja_passive import cyberninja_passive
         except ImportError:
             result = {"error": "CyberNinja passive module not available"}
         else:

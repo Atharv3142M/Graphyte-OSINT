@@ -35,6 +35,27 @@ except Exception:  # pragma: no cover - optional
     RESET = "\033[0m"
 
 
+def _detect_python() -> str:
+    """
+    Prefer project virtualenv python if available, otherwise sys.executable.
+    """
+    root = os.path.dirname(os.path.abspath(__file__))
+    if os.name == "nt":
+        candidates = [
+            os.path.join(root, ".venv", "Scripts", "python.exe"),
+            os.path.join(root, "venv", "Scripts", "python.exe"),
+        ]
+    else:
+        candidates = [
+            os.path.join(root, ".venv", "bin", "python"),
+            os.path.join(root, "venv", "bin", "python"),
+        ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return sys.executable
+
+
 def _spawn(name: str, cmd: List[str]) -> subprocess.Popen:
     kwargs: Dict = {
         "stdout": subprocess.PIPE,
@@ -88,8 +109,9 @@ def main() -> int:
     print("=" * 72)
 
     # Commands
-    uvicorn_cmd = [sys.executable, "-m", "uvicorn", "backend.api:app", "--reload", "--port", "8000"]
-    celery_cmd = [sys.executable, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
+    py = _detect_python()
+    uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--reload", "--port", "8000"]
+    celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
     next_cmd = ["npm", "run", "dev", "--prefix", "frontend"]
 
     procs: Dict[str, subprocess.Popen] = {}

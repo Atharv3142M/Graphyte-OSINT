@@ -11,8 +11,8 @@ import sys
 import threading
 from typing import Dict, Optional
 
-from celery_app import celery_app
-from config_injection import temporary_service_config
+from backend.celery_app import celery_app
+from backend.config_injection import temporary_service_config
 
 # Strict hard timeout (seconds). Subprocess is killed if exceeded.
 TASK_HARD_TIMEOUT = int(os.getenv("CELERY_TASK_HARD_TIMEOUT", "300"))

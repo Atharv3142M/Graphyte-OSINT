@@ -45,6 +45,28 @@ except Exception:  # pragma: no cover - optional
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 
+def _detect_python() -> str:
+    """
+    Prefer project virtualenv python if available, otherwise sys.executable.
+    """
+    root = os.path.dirname(os.path.abspath(__file__))
+    candidates = []
+    if os.name == "nt":
+        candidates = [
+            os.path.join(root, ".venv", "Scripts", "python.exe"),
+            os.path.join(root, "venv", "Scripts", "python.exe"),
+        ]
+    else:
+        candidates = [
+            os.path.join(root, ".venv", "bin", "python"),
+            os.path.join(root, "venv", "bin", "python"),
+        ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return sys.executable
+
+
 def step1_infra_check() -> bool:
     print(f"{CYAN}Step 1: Infrastructure Check{RESET}")
     services: list[Tuple[str, Callable[[], Tuple[bool, str]]]] = [
@@ -133,8 +155,9 @@ async def _wait_for_health(timeout: float = 30.0) -> bool:
 
 async def step3_dry_run() -> bool:
     print(f"{CYAN}Step 3: Dry-Run E2E (FastAPI + Celery){RESET}")
-    uvicorn_cmd = [sys.executable, "-m", "uvicorn", "backend.api:app", "--port", "8000"]
-    celery_cmd = [sys.executable, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
+    py = _detect_python()
+    uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--port", "8000"]
+    celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
 
     uvicorn_proc = _spawn_process("FastAPI (uvicorn)", uvicorn_cmd)
     celery_proc = _spawn_process("Celery worker", celery_cmd)
