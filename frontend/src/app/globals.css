@@ -4,34 +4,154 @@
 
 @layer base {
   :root {
+    /* ── Core palette ─────────────────────────────── */
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215 20.2% 65.1%;
     --border: 217.2 32.6% 17.5%;
     --ring: 187 85% 43%;
+
+    /* ── Accent colors ────────────────────────────── */
     --accent-cyan: 187 85% 43%;
+    --accent-violet: 258 89% 66%;
     --accent-amber: 38 92% 50%;
     --accent-red: 0 84% 60%;
     --accent-green: 142 71% 45%;
+    --accent-pink: 330 81% 60%;
+
+    /* ── Glow intensities ─────────────────────────── */
+    --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.25), 0 0 60px rgba(6, 182, 212, 0.08);
+    --glow-violet: 0 0 20px rgba(139, 92, 246, 0.25), 0 0 60px rgba(139, 92, 246, 0.08);
+    --glow-amber: 0 0 20px rgba(245, 158, 11, 0.25), 0 0 60px rgba(245, 158, 11, 0.08);
+    --glow-red: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 60px rgba(239, 68, 68, 0.1);
+    --glow-green: 0 0 20px rgba(34, 197, 94, 0.25), 0 0 60px rgba(34, 197, 94, 0.08);
+
+    /* ── Glass properties ─────────────────────────── */
+    --glass-bg: rgba(15, 23, 42, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-blur: 20px;
   }
 }
 
+/* ── Body ────────────────────────────────────────── */
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.03) 0%, transparent 70%),
+    radial-gradient(circle 1px at center, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+  background-position: center, center;
+  overflow: hidden;
 }
 
-/* Scrollbar styling */
+/* ── Glass panels ────────────────────────────────── */
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .glass-panel-dense {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+  }
+
+  .glow-cyan {
+    box-shadow: var(--glow-cyan);
+  }
+  .glow-violet {
+    box-shadow: var(--glow-violet);
+  }
+  .glow-amber {
+    box-shadow: var(--glow-amber);
+  }
+  .glow-red {
+    box-shadow: var(--glow-red);
+  }
+  .glow-green {
+    box-shadow: var(--glow-green);
+  }
+
+  .glow-cyan-subtle {
+    box-shadow: 0 0 12px rgba(6, 182, 212, 0.12);
+  }
+
+  .gradient-btn {
+    background: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%);
+  }
+  .gradient-btn:hover {
+    background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 100%);
+  }
+}
+
+/* ── Keyframes ───────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes node-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
+@keyframes edge-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+
+@keyframes fade-in-up {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 25%, rgba(6, 182, 212, 0.06) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* ── Scrollbar ───────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-slate-900;
+  @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-600 rounded-full;
+  @apply bg-slate-700/60 rounded-full;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-slate-500;
+  @apply bg-cyan-500/40;
+  box-shadow: 0 0 6px rgba(6, 182, 212, 0.3);
+}
+
+/* ── Focus rings ─────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.5);
+  outline-offset: 2px;
 }

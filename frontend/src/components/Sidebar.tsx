@@ -30,35 +30,41 @@ interface SidebarProps {
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
   return (
-    <aside className="w-56 flex-none border-r border-slate-800 bg-slate-900/50 flex flex-col">
-      <div className="p-4 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-            <Network className="w-4 h-4 text-cyan-400" />
-          </div>
-          <span className="font-semibold text-slate-100 text-sm">OSINT Platform</span>
-        </div>
+    <aside className="w-[56px] h-full glass-panel-dense flex flex-col items-center py-3 gap-1">
+      {/* Logo */}
+      <div className="w-9 h-9 rounded-xl bg-cyan-500/15 flex items-center justify-center mb-4 glow-cyan-subtle">
+        <Network className="w-4 h-4 text-cyan-400" />
       </div>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+
+      {/* Nav items */}
+      <nav className="flex-1 flex flex-col items-center gap-1">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => onNavigate(id)}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-              active === id
-                ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
-            )}
-          >
-            <Icon className="w-4 h-4 flex-shrink-0" />
-            {label}
-          </button>
+          <div key={id} className="relative group">
+            <button
+              onClick={() => onNavigate(id)}
+              className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200",
+                active === id
+                  ? "bg-cyan-500/15 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+                  : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+              )}
+            >
+              <Icon className="w-[18px] h-[18px]" />
+              {/* Active indicator dot */}
+              {active === id && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
+              )}
+            </button>
+            {/* Tooltip */}
+            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg glass-panel text-xs text-slate-200 font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              {label}
+            </div>
+          </div>
         ))}
       </nav>
-      <div className="p-3 border-t border-slate-800">
-        <div className="text-xs text-slate-500 px-3">v0.1.0 · Enterprise</div>
-      </div>
+
+      {/* Version */}
+      <div className="text-[9px] text-slate-600 leading-none tracking-wide rotate-0 mt-2">v0.1</div>
     </aside>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import anser from "anser";
-import { GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ResizableTerminalProps {
@@ -12,6 +12,8 @@ export interface ResizableTerminalProps {
   defaultHeight?: number;
   minHeight?: number;
   maxHeight?: number;
+  expanded?: boolean;
+  onToggle?: () => void;
 }
 
 export function ResizableTerminal({
@@ -19,8 +21,10 @@ export function ResizableTerminal({
   className = "",
   maxLines = 500,
   defaultHeight = 200,
-  minHeight = 120,
-  maxHeight = 480,
+  minHeight = 100,
+  maxHeight = 400,
+  expanded = true,
+  onToggle,
 }: ResizableTerminalProps) {
   const containerRef = useRef<HTMLPreElement>(null);
   const [height, setHeight] = useState(defaultHeight);
@@ -57,30 +61,61 @@ export function ResizableTerminal({
   const displayLines = maxLines > 0 ? lines.slice(-maxLines) : lines;
 
   return (
-    <div className={cn("flex flex-col border-t border-slate-700 bg-slate-950", className)}>
+    <div className={cn("glass-panel-dense rounded-2xl overflow-hidden flex flex-col", className)}>
+      {/* Drag handle + collapse header */}
       <div
-        className="flex items-center justify-center h-2 cursor-ns-resize hover:bg-slate-800/50 transition-colors group"
+        className="flex items-center justify-between px-3 py-2 cursor-ns-resize select-none border-b border-white/[0.04]"
         onMouseDown={(e) => {
+          if (e.detail === 2) {
+            onToggle?.();
+            return;
+          }
           setDragging(true);
           startY.current = e.clientY;
           startH.current = height;
         }}
       >
-        <GripVertical className="w-4 h-4 text-slate-500 group-hover:text-slate-400" />
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-cyan-500" />
+          <span className="text-[11px] font-semibold text-slate-400 tracking-wide">Console</span>
+          {lines.length > 0 && (
+            <span className="text-[10px] text-slate-600 tabular-nums">{lines.length} lines</span>
+          )}
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle?.();
+          }}
+          className="p-1 rounded-md hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+        </button>
       </div>
-      <pre
-        ref={containerRef}
-        className="flex-1 overflow-auto font-mono text-xs text-slate-200 p-3"
-        style={{ height, minHeight: 80 }}
-      >
-        {displayLines.map((raw, i) => {
-          const escaped = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-          const html = anser.ansiToHtml(escaped, { use_classes: true });
-          return (
-            <div key={i} className="leading-relaxed" dangerouslySetInnerHTML={{ __html: html }} />
-          );
-        })}
-      </pre>
+
+      {/* Log content */}
+      {expanded && (
+        <pre
+          ref={containerRef}
+          className="flex-1 overflow-auto font-mono text-[11px] text-slate-300 px-3 py-2 leading-[1.7]"
+          style={{ height, minHeight: 60 }}
+        >
+          {displayLines.length === 0 && (
+            <span className="text-slate-600 italic">Ready. Enter a target above to begin.</span>
+          )}
+          {displayLines.map((raw, i) => {
+            const escaped = raw
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+            const html = anser.ansiToHtml(escaped, { use_classes: true });
+            return (
+              <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
+            );
+          })}
+        </pre>
+      )}
     </div>
   );
 }

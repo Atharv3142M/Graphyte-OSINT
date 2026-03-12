@@ -37,7 +37,7 @@ export function StixGraph({ className = "", pruneLeaves = false }: StixGraphProp
         let edges = elements.edges || [];
 
         if (pruneLeaves && nodes.length > 0) {
-          const nodeIds = new Set(nodes.map((n: { data: { id: string } }) => n.data.id));
+          const nodeIds = new Set<string>(nodes.map((n: { data: { id: string } }) => n.data.id));
           const degree = new Map<string, number>();
           nodeIds.forEach((id: string) => degree.set(id, 0));
           edges.forEach((e: { data: { source: string; target: string } }) => {
