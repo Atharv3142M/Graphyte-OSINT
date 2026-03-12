@@ -8,6 +8,7 @@ import { NodeDetailPanel, type NodeDetail } from "@/components/NodeDetailPanel";
 import { ResizableTerminal } from "@/components/ResizableTerminal";
 import { MediaForensicsModal } from "@/components/MediaForensicsModal";
 import { ActivityTimelineModal } from "@/components/ActivityTimelineModal";
+import { ModuleCards } from "@/components/ModuleCards";
 import "@/styles/ansi.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -161,6 +162,14 @@ export default function Dashboard() {
                   onNodeSelect={handleNodeSelect}
                   selectedNodeId={selectedNode?.id ?? null}
                   className="h-full"
+                />
+              </div>
+            )}
+            {nav === "recon" && (
+              <div className="flex-1 overflow-y-auto">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4">Recon Modules</h2>
+                <ModuleCards
+                  onStreamLog={(line) => setStreamLog((p) => [...p, line])}
                 />
               </div>
             )}

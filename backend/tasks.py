@@ -210,3 +210,80 @@ def task_port_scan(
     payload = {"host": host, "ports": ports, "max_workers": max_workers, "timeout": timeout}
     redis_client = _get_redis()
     return _run_module_subprocess("port_scanner", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.dns_intel",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_dns_intel(
+    self,
+    domain: str,
+    brute_subdomains: bool = False,
+    wordlist: list[str] | None = None,
+):
+    payload = {"domain": domain, "brute_subdomains": brute_subdomains, "wordlist": wordlist}
+    redis_client = _get_redis()
+    return _run_module_subprocess("dns_intel", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.whois_lookup",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_whois_lookup(self, domain: str):
+    payload = {"domain": domain}
+    redis_client = _get_redis()
+    return _run_module_subprocess("whois_lookup", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.ssl_analyze",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_ssl_analyze(self, host: str, port: int = 443, timeout: int = 10):
+    payload = {"host": host, "port": port, "timeout": timeout}
+    redis_client = _get_redis()
+    return _run_module_subprocess("ssl_analyzer", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.http_security",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_http_security(self, url: str, timeout: int = 10):
+    payload = {"url": url, "timeout": timeout}
+    redis_client = _get_redis()
+    return _run_module_subprocess("http_security", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.tech_stack",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_tech_stack(self, url: str, timeout: int = 10):
+    payload = {"url": url, "timeout": timeout}
+    redis_client = _get_redis()
+    return _run_module_subprocess("tech_stack", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.metadata_extractor",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_metadata_extract(self, file_path: str):
+    payload = {"file_path": file_path}
+    redis_client = _get_redis()
+    return _run_module_subprocess("metadata_extractor", payload, self.request.id, redis_client)

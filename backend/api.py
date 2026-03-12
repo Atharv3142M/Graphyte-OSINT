@@ -15,7 +15,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from redis import Redis
 
-from backend.tasks import task_shodan, task_censys, task_scrape, task_port_scan
+from backend.tasks import (
+    task_shodan, task_censys, task_scrape, task_port_scan,
+    task_dns_intel, task_whois_lookup, task_ssl_analyze,
+    task_http_security, task_tech_stack, task_metadata_extract,
+)
 
 
 def _log_audit(tenant_id: Optional[str], action: str, target: Optional[str] = None, status: str = "initiated") -> None:
@@ -132,6 +136,36 @@ class PortScannerRequest(BaseModel):
     timeout: float = 2.0
 
 
+class DnsIntelRequest(BaseModel):
+    domain: str
+    brute_subdomains: bool = False
+    wordlist: list[str] | None = None
+
+
+class WhoisRequest(BaseModel):
+    domain: str
+
+
+class SslAnalyzeRequest(BaseModel):
+    host: str
+    port: int = 443
+    timeout: int = 10
+
+
+class HttpSecurityRequest(BaseModel):
+    url: str
+    timeout: int = 10
+
+
+class TechStackRequest(BaseModel):
+    url: str
+    timeout: int = 10
+
+
+class MetadataExtractRequest(BaseModel):
+    file_path: str
+
+
 class IngestRequest(BaseModel):
     urls: list[str]
     strategies: list[str] | None = None
@@ -208,6 +242,84 @@ def api_port_scan(req: PortScannerRequest, x_tenant_id: Optional[str] = Header(N
     _log_audit(x_tenant_id, "port_scan", req.host, "initiated")
     _publish_event("osint.investigation.started", {"action": "port_scan", "target": req.host})
     t = task_port_scan.delay(req.host, req.ports, req.max_workers, req.timeout)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/dns-intel")
+def api_dns_intel(req: DnsIntelRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "dns_intel", req.domain, "initiated")
+    _publish_event("osint.investigation.started", {"action": "dns_intel", "target": req.domain})
+    t = task_dns_intel.delay(req.domain, req.brute_subdomains, req.wordlist)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/whois")
+def api_whois(req: WhoisRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "whois_lookup", req.domain, "initiated")
+    _publish_event("osint.investigation.started", {"action": "whois_lookup", "target": req.domain})
+    t = task_whois_lookup.delay(req.domain)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/ssl-analyze")
+def api_ssl_analyze(req: SslAnalyzeRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "ssl_analyze", req.host, "initiated")
+    _publish_event("osint.investigation.started", {"action": "ssl_analyze", "target": req.host})
+    t = task_ssl_analyze.delay(req.host, req.port, req.timeout)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/http-security")
+def api_http_security(req: HttpSecurityRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "http_security", req.url, "initiated")
+    _publish_event("osint.investigation.started", {"action": "http_security", "target": req.url})
+    t = task_http_security.delay(req.url, req.timeout)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/tech-stack")
+def api_tech_stack(req: TechStackRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "tech_stack", req.url, "initiated")
+    _publish_event("osint.investigation.started", {"action": "tech_stack", "target": req.url})
+    t = task_tech_stack.delay(req.url, req.timeout)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/metadata-extract")
+def api_metadata_extract(req: MetadataExtractRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "metadata_extract", req.file_path, "initiated")
+    _publish_event("osint.investigation.started", {"action": "metadata_extract", "target": req.file_path})
+    t = task_metadata_extract.delay(req.file_path)
     return {
         "task_id": t.id,
         "status": "queued",

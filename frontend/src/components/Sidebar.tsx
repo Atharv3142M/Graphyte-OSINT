@@ -4,17 +4,19 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Network,
+  ScanSearch,
   MapPin,
   Image,
   FileText,
   Shield,
 } from "lucide-react";
 
-export type NavItem = "dashboard" | "graph" | "spatial" | "media" | "reports" | "settings";
+export type NavItem = "dashboard" | "graph" | "recon" | "spatial" | "media" | "reports" | "settings";
 
 const NAV_ITEMS: { id: NavItem; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "graph", label: "Graph Explorer", icon: Network },
+  { id: "recon", label: "Recon Modules", icon: ScanSearch },
   { id: "spatial", label: "Spatial Intelligence", icon: MapPin },
   { id: "media", label: "Media Forensics", icon: Image },
   { id: "reports", label: "Reports", icon: FileText },

@@ -91,6 +91,38 @@ def main() -> None:
                 timeout=payload.get("timeout"),
                 site_list=payload.get("site_list"),
             )
+    elif module_name == "dns_intel":
+        from backend.modules.dns_intel import dns_recon
+        result = dns_recon(
+            payload.get("domain", ""),
+            brute_subdomains=payload.get("brute_subdomains", False),
+            wordlist=payload.get("wordlist"),
+        )
+    elif module_name == "whois_lookup":
+        from backend.modules.whois_lookup import whois_lookup
+        result = whois_lookup(payload.get("domain", ""))
+    elif module_name == "ssl_analyzer":
+        from backend.modules.ssl_analyzer import ssl_analyze
+        result = ssl_analyze(
+            payload.get("host", ""),
+            port=payload.get("port", 443),
+            timeout=payload.get("timeout", 10),
+        )
+    elif module_name == "http_security":
+        from backend.modules.http_security import http_security_audit
+        result = http_security_audit(
+            payload.get("url", ""),
+            timeout=payload.get("timeout", 10),
+        )
+    elif module_name == "tech_stack":
+        from backend.modules.tech_stack import detect_tech_stack
+        result = detect_tech_stack(
+            payload.get("url", ""),
+            timeout=payload.get("timeout", 10),
+        )
+    elif module_name == "metadata_extractor":
+        from backend.modules.metadata_extractor import extract_metadata
+        result = extract_metadata(payload.get("file_path", ""))
     else:
         result = {"error": f"Unknown module: {module_name}"}
 
