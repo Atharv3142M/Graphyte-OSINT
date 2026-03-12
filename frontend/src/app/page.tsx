@@ -12,6 +12,8 @@ import "@/styles/ansi.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
+const DEFAULT_TENANT_ID =
+  process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 export default function Dashboard() {
   const [nav, setNav] = useState<NavItem>("dashboard");
@@ -34,7 +36,10 @@ export default function Dashboard() {
         if (intensity === "agent") {
           const res = await fetch(`${API_BASE}/api/agent/investigate`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-ID": DEFAULT_TENANT_ID,
+            },
             body: JSON.stringify({ goal: `Investigate ${target}` }),
           });
           const data = await res.json();
@@ -58,7 +63,10 @@ export default function Dashboard() {
 
         const res = await fetch(`${API_BASE}${endpoint}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Tenant-ID": DEFAULT_TENANT_ID,
+          },
           body: JSON.stringify(body),
         });
         const data = await res.json();

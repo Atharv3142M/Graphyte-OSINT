@@ -9,7 +9,7 @@ Independent project building a Unified Enterprise OSINT Platform with a rigid, d
 ### Command Dispatcher & Task Isolation
 
 1. **FastAPI** – Command dispatcher and state manager. Receives requests, enqueues Celery tasks, exposes WebSocket for real-time stream. Does **not** run OSINT logic.
-2. **Celery** – Consumes tasks from Redis. Each task uses `subprocess.Popen` to run `python -m run_module <module>`, isolating execution from the worker process.
+2. **Celery** – Consumes tasks from Redis. Each task uses `subprocess.Popen` to run `python -m run_module <module>`, isolating execution from the worker process. On Windows, workers run with `--pool=solo` for compatibility.
 3. **run_module.py** – CLI entry point. Reads JSON from stdin, invokes the appropriate module function, writes JSON result to stdout.
 4. **Async capture** – Worker threads read stdout/stderr line-by-line, publish each chunk to Redis pub/sub.
 5. **WebSocket** – FastAPI subscribes to Redis channel `osint:task:stream:{task_id}`, pushes chunks to the Next.js frontend in real time.

@@ -112,6 +112,8 @@ def main() -> int:
     py = _detect_python()
     uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--reload", "--port", "8000"]
     celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
+    if os.name == "nt":
+        celery_cmd += ["--pool=solo", "--concurrency=1"]
     next_cmd = ["npm", "run", "dev", "--prefix", "frontend"]
 
     procs: Dict[str, subprocess.Popen] = {}

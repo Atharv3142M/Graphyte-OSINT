@@ -158,6 +158,8 @@ async def step3_dry_run() -> bool:
     py = _detect_python()
     uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--port", "8000"]
     celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
+    if os.name == "nt":
+        celery_cmd += ["--pool=solo", "--concurrency=1"]
 
     uvicorn_proc = _spawn_process("FastAPI (uvicorn)", uvicorn_cmd)
     celery_proc = _spawn_process("Celery worker", celery_cmd)

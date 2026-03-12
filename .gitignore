@@ -8,3 +8,4 @@ backend/**/__pycache__
 *.pyc
 
 # repos/ deleted – application is fully independent
+/.cursor
