@@ -91,6 +91,18 @@ def main() -> None:
                 timeout=payload.get("timeout"),
                 site_list=payload.get("site_list"),
             )
+    elif module_name == "xrecon":
+        from backend.modules.xrecon import xrecon_search
+        result = xrecon_search(
+            payload.get("query", ""),
+            payload.get("query_type", "username"),
+        )
+    elif module_name == "graysentinel_pipeline":
+        from backend.modules.graysentinel_pipeline import run_pipeline
+        result = run_pipeline(
+            payload.get("urls", []),
+            payload.get("strategies"),
+        )
     elif module_name == "dns_intel":
         from backend.modules.dns_intel import dns_recon
         result = dns_recon(

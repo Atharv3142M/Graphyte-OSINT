@@ -9,3 +9,6 @@ backend/**/__pycache__
 
 # repos/ deleted – application is fully independent
 /.cursor
+/reference-repos
+EXECUTION_PLAN.md
+CLAUDE.md

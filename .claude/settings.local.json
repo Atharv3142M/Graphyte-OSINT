@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude plugin:*)",
+      "Bash(find /c/Users/Atharv/Documents/GitHub -maxdepth 2 -type d -iname *osint* -o -iname *footprint* -o -iname *recon* -o -iname *scan*)",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/CyberNinja-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/Digital-Footprint-OSINT-Tool-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/Forensight-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/GraySentinel-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/OSINT-Search-master.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/TraceGraph-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/bat-security-toolkit-main.zip\")",
+      "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/xRec0n-main.zip\")"
+    ]
+  }
+}

@@ -2,8 +2,11 @@
 Celery app for distributed OSINT task processing.
 Uses Redis as broker. Configure via CELERY_BROKER_URL / REDIS_URL.
 """
-from celery import Celery
+from __future__ import annotations
+
 import os
+
+from celery import Celery
 
 broker_url = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL", "redis://localhost:6379/0")
 result_backend = os.getenv("CELERY_RESULT_BACKEND") or broker_url
@@ -12,7 +15,7 @@ celery_app = Celery(
     "osint_platform",
     broker=broker_url,
     backend=result_backend,
-    include=["tasks"],
+    include=["backend.tasks"],
 )
 celery_app.conf.update(
     task_serializer="json",

@@ -19,6 +19,7 @@ from backend.tasks import (
     task_shodan, task_censys, task_scrape, task_port_scan,
     task_dns_intel, task_whois_lookup, task_ssl_analyze,
     task_http_security, task_tech_stack, task_metadata_extract,
+    task_graysentinel_ingest, task_cyberninja_passive, task_xrecon,
 )
 
 
@@ -164,6 +165,17 @@ class TechStackRequest(BaseModel):
 
 class MetadataExtractRequest(BaseModel):
     file_path: str
+
+
+class CyberNinjaRequest(BaseModel):
+    usernames: list[str]
+    timeout: float | None = None
+    site_list: list[str] | None = None
+
+
+class XReconRequest(BaseModel):
+    query: str
+    query_type: str = "username"
 
 
 class IngestRequest(BaseModel):
@@ -328,6 +340,32 @@ def api_metadata_extract(req: MetadataExtractRequest, x_tenant_id: Optional[str]
     }
 
 
+@app.post("/api/cyberninja")
+def api_cyberninja(req: CyberNinjaRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "cyberninja_passive", ",".join(req.usernames[:3]), "initiated")
+    _publish_event("osint.investigation.started", {"action": "cyberninja_passive", "target": ",".join(req.usernames[:3])})
+    t = task_cyberninja_passive.delay(req.usernames, req.timeout, req.site_list)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/xrecon")
+def api_xrecon(req: XReconRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "xrecon", req.query[:100], "initiated")
+    _publish_event("osint.investigation.started", {"action": "xrecon", "target": req.query[:100]})
+    t = task_xrecon.delay(req.query, req.query_type)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
 @app.post("/api/ingest")
 def api_ingest(req: IngestRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """Ingest URLs via GraySentinel pipeline (scrape, chunk, NER, embed, Weaviate)."""
@@ -336,9 +374,13 @@ def api_ingest(req: IngestRequest, x_tenant_id: Optional[str] = Header(None, ali
         "osint.investigation.started",
         {"action": "graysentinel_ingest", "target": ",".join(req.urls[:3]) if req.urls else ""},
     )
-    from backend.modules.graysentinel_pipeline import run_pipeline
-
-    return run_pipeline(req.urls, req.strategies)
+    t = task_graysentinel_ingest.delay(req.urls, req.strategies)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
 
 
 @app.post("/api/semantic-search")

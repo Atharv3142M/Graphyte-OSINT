@@ -52,7 +52,7 @@ def _spawn_and_stream(
         env.update(extra_env)
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "run_module", module_name],
+        [sys.executable, "-m", "backend.run_module", module_name],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -287,3 +287,39 @@ def task_metadata_extract(self, file_path: str):
     payload = {"file_path": file_path}
     redis_client = _get_redis()
     return _run_module_subprocess("metadata_extractor", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.graysentinel_ingest",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_graysentinel_ingest(self, urls: list[str], strategies: list[str] | None = None):
+    payload = {"urls": urls, "strategies": strategies}
+    redis_client = _get_redis()
+    return _run_module_subprocess("graysentinel_pipeline", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.cyberninja_passive",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_cyberninja_passive(self, usernames: list[str], timeout: float | None = None, site_list: list[str] | None = None):
+    payload = {"usernames": usernames, "timeout": timeout, "site_list": site_list}
+    redis_client = _get_redis()
+    return _run_module_subprocess("cyberninja_passive", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.xrecon",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_xrecon(self, query: str, query_type: str = "username"):
+    payload = {"query": query, "query_type": query_type}
+    redis_client = _get_redis()
+    return _run_module_subprocess("xrecon", payload, self.request.id, redis_client)
