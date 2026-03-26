@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import cytoscape, { Core, NodeSingular } from "cytoscape";
-import { ZoomIn, ZoomOut, Maximize2, Layers, AlertTriangle } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Layers, AlertTriangle, DatabaseOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeDetail } from "./NodeDetailPanel";
+import { getMockGraphElements } from "@/lib/mock-data";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 /* ── Color map for node types ──────────────────────────── */
 const TYPE_COLORS: Record<string, { bg: string; border: string; glow: string }> = {
@@ -56,9 +58,23 @@ export function GraphCanvas({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/graph`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      let data;
+      let usingMock = false;
+
+      if (USE_MOCK_DATA) {
+        data = await getMockGraphElements();
+        usingMock = true;
+      } else {
+        const res = await fetch(`${API_BASE}/api/graph`);
+        if (!res.ok) {
+          // Fallback to mock data if backend unavailable
+          data = await getMockGraphElements();
+          usingMock = true;
+        } else {
+          data = await res.json();
+        }
+      }
+
       const elements = data.elements || { nodes: [], edges: [] };
       let nodes = elements.nodes || [];
       let edges = elements.edges || [];
@@ -272,6 +288,15 @@ export function GraphCanvas({
           <div className="glass-panel rounded-2xl px-6 py-4 max-w-sm text-center">
             <AlertTriangle className="w-5 h-5 text-red-400 mx-auto mb-2" />
             <span className="text-red-400 text-sm">{error}</span>
+          </div>
+        </div>
+      )}
+      {/* Mock data indicator */}
+      {!loading && !error && (
+        <div className="absolute top-4 right-4 z-20">
+          <div className="glass-panel rounded-xl px-3 py-1.5 flex items-center gap-2">
+            <DatabaseOff className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[10px] text-slate-400 font-medium">Mock Data Mode</span>
           </div>
         </div>
       )}

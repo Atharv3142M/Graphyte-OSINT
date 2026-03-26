@@ -9,12 +9,14 @@ import { ResizableTerminal } from "@/components/ResizableTerminal";
 import { MediaForensicsModal } from "@/components/MediaForensicsModal";
 import { ActivityTimelineModal } from "@/components/ActivityTimelineModal";
 import { ModuleCards } from "@/components/ModuleCards";
+import { simulateStream, MOCK_TERMINAL_STREAMS } from "@/lib/mock-data";
 import "@/styles/ansi.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const WS_BASE = API_BASE.replace(/^http/, "ws");
 const DEFAULT_TENANT_ID =
   process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 export default function Dashboard() {
   const [nav, setNav] = useState<NavItem>("dashboard");
@@ -31,7 +33,7 @@ export default function Dashboard() {
   /* ── Whether the graph is visible (dashboard or graph tab) ─── */
   const graphVisible = nav === "dashboard" || nav === "graph";
 
-  /* ── Investigate handler (unchanged logic) ─────────────────── */
+  /* ── Investigate handler (mock-aware) ─────────────────── */
   const handleInvestigate = useCallback(
     async (target: string, intensity: WorkflowIntensity) => {
       setLoading(true);
@@ -39,6 +41,27 @@ export default function Dashboard() {
       setTerminalExpanded(true);
       wsRef.current?.close();
 
+      // Mock data mode simulation
+      if (USE_MOCK_DATA) {
+        const streamKey = intensity === "aggressive" ? "port_scan" :
+                         intensity === "agent" ? "agent" : "shodan";
+        setStreamLog([`\x1b[33m[MOCK MODE]\x1b[0m Simulating ${streamKey} for "${target}"...`]);
+
+        const cleanup = simulateStream(
+          streamKey,
+          (line) => setStreamLog((p) => [...p, line]),
+          () => {
+            setLoading(false);
+            // Auto-load mock graph after simulation
+            if (nav === "dashboard" || nav === "graph") {
+              // Trigger graph refresh
+            }
+          }
+        );
+        return cleanup;
+      }
+
+      // Real backend mode
       try {
         if (intensity === "agent") {
           const res = await fetch(`${API_BASE}/api/agent/investigate`, {
@@ -124,7 +147,7 @@ export default function Dashboard() {
         setLoading(false);
       }
     },
-    []
+    [nav]
   );
 
   const handleNodeSelect = useCallback((node: NodeDetail | null) => {

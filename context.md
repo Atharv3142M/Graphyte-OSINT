@@ -1,230 +1,215 @@
-# Unified Enterprise OSINT Platform - Project Context
+# OSINT Digital Footprint Visualizer - Project Context
 
-## Overview
+**Last Updated:** 2026-03-26
+**Status:** Phase 3 Complete - UI Components Ready for Preview
 
-Independent project building a Unified Enterprise OSINT Platform with a rigid, distributed backend and polyglot persistence strategy. **Isolation-and-wrapper methodology**: FastAPI acts as command dispatcher and state manager; Celery workers execute OSINT modules via subprocess with strict timeouts. No direct execution in the FastAPI main thread.
+---
 
-## Architecture
+## 1. Architecture Overview
 
-### Command Dispatcher & Task Isolation
+### Isolation-and-Wrapper Methodology
 
-1. **FastAPI** – Command dispatcher and state manager. Receives requests, enqueues Celery tasks, exposes WebSocket for real-time stream. Does **not** run OSINT logic.
-2. **Celery** – Consumes tasks from Redis. Each task uses `subprocess.Popen` to run `python -m run_module <module>`, isolating execution from the worker process. On Windows, workers run with `--pool=solo` for compatibility.
-3. **run_module.py** – CLI entry point. Reads JSON from stdin, invokes the appropriate module function, writes JSON result to stdout.
-4. **Async capture** – Worker threads read stdout/stderr line-by-line, publish each chunk to Redis pub/sub.
-5. **WebSocket** – FastAPI subscribes to Redis channel `osint:task:stream:{task_id}`, pushes chunks to the Next.js frontend in real time.
-6. **Hard timeout** – `CELERY_TASK_HARD_TIMEOUT` (default 300s). On expiry, worker sends SIGKILL to the child process to reclaim resources.
+The platform enforces strict isolation between HTTP and OSINT execution:
+
+1. **FastAPI** - Command dispatcher only
+2. **Celery** - Consumes tasks, spawns subprocesses
+3. **run_module.py** - Subprocess CLI entry point
+4. **Subprocess isolation** - OSINT runs separately, SIGKILL on timeout
+5. **Config injection** - Ephemeral temp files for credentials
+
+### Data Flow
+
+Next.js -> FastAPI POST /api/* -> Celery task -> Redis queue -> Worker spawns subprocess -> run_module.py -> modules/* -> stdout/stderr -> Redis pub/sub -> WebSocket -> Frontend
 
 ### Polyglot Persistence
 
-| Store | Purpose | Port(s) |
-|-------|---------|---------|
-| **Redis** | Celery broker + task stream pub/sub | 6379 |
-| **RabbitMQ** | Enterprise Pub/Sub event bus | 5672 (AMQP), 15672 (Mgmt) |
-| **Neo4j** | Graph DB for STIX data | 7474 (HTTP), 7687 (Bolt) |
-| **Weaviate** | Vector DB (semantic search, GraySentinel) | 8080, 50051 |
-| **PostgreSQL** | Configs, multi-tenant, audit logs | 5432 |
+| Store | Purpose | Port |
+|-------|---------|------|
+| Redis | Celery broker + task stream | 6379 |
+| RabbitMQ | Enterprise event bus | 5672 |
+| Neo4j | STIX 2.1 graph | 7687 |
+| Weaviate | Vector DB | 8080 |
+| PostgreSQL | Multi-tenant configs | 5432 |
 
-## Project Structure
+---
 
+## 2. LangGraph Multi-Agent Orchestration
+
+START -> orchestrator -> (searcher | analyzer | pentester) -> orchestrator -> END
+
+- **Orchestrator**: Routes to sub-agents, synthesizes results
+- **Searcher**: Tools: shodan_search, censys_search, scrape_urls, xrecon_search
+- **Analyzer**: Tools: semantic_search, graysentinel_ingest, score_threat
+- **Pentester**: Tools: port_scan, cyberninja_passive
+
+---
+
+## 3. Module Inventory
+
+| Module | Function | Keyless |
+|--------|----------|---------|
+| shodan_recon | shodan_search | No |
+| censys_recon | censys_search | No |
+| scraper | scrape_urls | Yes |
+| port_scanner | scan_ports | Yes |
+| cyberninja_passive | username enum | Yes |
+| graysentinel_pipeline | scrape->chunk->embed | Yes |
+| xrecon | xrecon_search | Yes |
+| dnsintel | DNS enumeration | Yes |
+
+---
+
+## 4. Frontend Structure
+
+| Path | Purpose |
+|------|---------|
+| app/ | Next.js 15 dashboard |
+| components/ | Sidebar, Omnibar, GraphCanvas, NodeDetailPanel, ResizableTerminal |
+| lib/ | utils, mock-data |
+| styles/ | ansi.css, globals.css |
+
+**Tech:** Next.js 15, React 18, TypeScript, Tailwind, Radix UI, Cytoscape.js, Lucide
+
+---
+
+## 5. Design System
+
+**Colors:**
+- background: #020617 (slate-950)
+- card: #1e293b (slate-800)
+- cyan-500: #06b6d4
+- green-500: #22c55e
+- purple-500: #8b5cf6
+- amber-500: #f59e0b
+- red-500: #ef4444
+
+---
+
+## 6. STIX 2.1 Data Model
+
+Node types: ipv4-addr, domain-name, network-traffic, note
+
+Example:
+```json
+{
+  "type": "ipv4-addr",
+  "id": "ipv4-addr--uuid",
+  "value": "8.8.8.8",
+  "x_shodan_ports": [53, 443],
+  "x_shodan_org": "Google LLC"
+}
 ```
-├── frontend/              # Next.js 15, React 18, TypeScript, Tailwind, Radix UI
-│   ├── src/app/           # layout, page (dashboard)
-│   ├── src/components/    # Sidebar, Omnibar, GraphCanvas, NodeDetailPanel,
-│   │                      # ResizableTerminal, MediaForensicsModal, ActivityTimelineModal
-│   ├── src/lib/           # utils (cn)
-│   └── src/styles/        # ansi.css for terminal colors
-├── backend/
-│   ├── api.py             # FastAPI dispatcher, WebSocket, no OSINT execution
-│   ├── celery_app.py      # Celery config (Redis broker)
-│   ├── tasks.py           # Subprocess wrapper, async capture, Redis pub, SIGKILL, temp config
-│   ├── run_module.py      # CLI for subprocess (stdin JSON → stdout JSON, reads OSINT_CONFIG_FILE)
-│   ├── config_injection.py# Credentials from PostgreSQL user_configs or env
-│   ├── postgres_client.py # Multi-tenant schema, audit_events, log_audit_event
-│   ├── rabbitmq_client.py# Enterprise event bus (osint_events exchange)
-│   ├── stix_pipeline.py   # STIX 2.1 mapping helpers
-│   ├── neo4j_client.py    # Minimal Neo4j ingestion client
-│   ├── weaviate_client.py # Weaviate v4: schema, add_documents, semantic_search (cosine)
-│   ├── semantic_search.py # Natural-language query → embed → Weaviate near_vector
-│   ├── agents/            # LangGraph multi-agent (state, tools, nodes, graph)
-│   └── modules/           # Self-contained OSINT modules (no repos dependency)
-│       ├── graysentinel_pipeline.py # Scrape, chunk (by-title/similarity/context-aware), NER, embed, Weaviate
-├── docker-compose.yml
-├── .env.example
-└── context.md
+
+---
+
+## 7. API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| POST /api/shodan | Shodan recon |
+| POST /api/port-scan | Port scan |
+| POST /api/cyberninja | Passive username enum |
+| POST /api/xrecon | Cross-platform recon |
+| POST /api/ingest | GraySentinel pipeline |
+| POST /api/agent/investigate | LangGraph multi-agent |
+| GET /api/graph | Cytoscape elements |
+| WS /ws/task/{id} | Real-time stream |
+
+---
+
+## 8. Environment
+
+**Backend (.env):**
+```
+CELERY_BROKER_URL=redis://localhost:6379/0
+NEO4J_URI=bolt://localhost:7687
+WEAVIATE_HTTP_URI=http://localhost:8080
+DATABASE_URL=postgresql://postgres:password@localhost:5432/osint
 ```
 
-## API Endpoints
+**Frontend (.env.local):**
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_USE_MOCK_DATA=true
+```
 
-| Method | Endpoint | Body |
-|--------|----------|------|
-| POST | `/api/shodan` | `{ "target", "api_key"? }` |
-| POST | `/api/censys` | `{ "target", "api_id"?,"api_secret"? }` |
-| POST | `/api/scrape` | `{ "urls", "max_workers"? }` |
-| POST | `/api/port-scan` | `{ "host", "ports"?,"max_workers"?,"timeout"? }` |
-| POST | `/api/ingest` | `{ "urls", "strategies"? }` – GraySentinel pipeline, store in Weaviate |
-| POST | `/api/semantic-search` | `{ "query", "limit"? }` – Natural-language → cosine similarity |
-| POST | `/api/agent/investigate` | `{ "goal", "thread_id"? }` – LangGraph multi-agent investigation (memory-backed) |
-| GET | `/api/tasks/{task_id}` | Poll task result |
-| GET | `/api/graph` | Cytoscape elements (nodes/edges) from Neo4j |
-| WebSocket | `/ws/task/{task_id}` | Real-time stdout/stderr stream |
+---
 
-## GraySentinel / Semantic Search
+## 9. Mock Data System
 
-Traditional boolean search is insufficient for massive unstructured text (e.g. leaked forums, corporate docs). The GraySentinel methodology provides:
+Providers in frontend/src/lib/mock-data.ts:
+- MOCK_GRAPH_ELEMENTS: 10 nodes, 8 edges
+- MOCK_TERMINAL_STREAMS: shodan, port_scan, dns_intel, agent
+- MOCK_NODE_DETAILS: Entity panels
+- MOCK_TIMELINE_EVENTS: Investigation history
 
-1. **Weaviate** – Vector DB with cosine similarity search.
-2. **Extraction pipeline** (`modules/graysentinel_pipeline.py`) – Scrapes deep-web URLs (requests + BeautifulSoup), chunks text, extracts named entities, generates embeddings via sentence-transformers (`all-MiniLM-L6-v2`), stores in Weaviate.
-3. **Chunking** – Three strategies: chunk-by-title (split on h1/h2/h3), similarity-based (sliding window with overlap), context-aware (paragraph-boundary aware).
-4. **NER** – Metadata enrichment with regex-based extraction of emails, IPs, domains, phone numbers before embedding.
-5. **Natural-language query** – POST `/api/semantic-search` embeds the query, performs `near_vector` cosine search, returns contextual documents with `content`, `source_url`, `chunk_strategy`, `named_entities`, `distance`.
+---
 
-## Multi-Agent Orchestration (LangGraph)
+## 10. Key Files
 
-The system supports **autonomous, goal-directed agentic workflows** with multi-agent orchestration:
+| File | Purpose |
+|------|---------|
+| backend/api.py | FastAPI dispatcher |
+| backend/tasks.py | Celery + subprocess |
+| backend/run_module.py | Module CLI |
+| frontend/src/app/page.tsx | Dashboard |
+| frontend/src/components/GraphCanvas.tsx | Cytoscape |
+| frontend/src/lib/mock-data.ts | Mock providers |
 
-1. **LangGraph** – Stateful, graph-based framework. The graph is: `START → Orchestrator → (Searcher | Analyzer | Pentester) → Orchestrator → … → END`. Each sub-agent returns to the Orchestrator for routing.
+---
 
-2. **Four agent roles (zero-trust scoped tools)**  
-   - **Searcher Agent** – Web lookups only. Allowed tools: `shodan_search`, `censys_search`, `scrape_urls`, `xrecon_search` (OSINT-Search + xRecon modules).  
-   - **Analyzer Agent** – Semantic/threat only. Allowed tools: `semantic_search`, `graysentinel_ingest`, `score_threat` (GraySentinel semantic anomalies and threat risk scoring).  
-   - **Pentester Agent** – Scanning only. Allowed tools: `port_scan`, `cyberninja_passive` (CyberNinja + bat-security-toolkit).  
-   - **Orchestrator Agent** – No tools. Synthesizes results, triggers sub-agents via conditional edges, and produces STIX 2.1-compliant output.
+## 11. Troubleshooting
 
-3. **Memory** – Checkpoint memory (e.g. `MemorySaver` / `InMemorySaver`) persists state per `thread_id` so agents maintain context across multi-step investigation chains. Use the same `thread_id` to resume or continue an investigation.
+**Celery not consuming:**
+```bash
+redis-cli ping
+celery -A backend.celery_app inspect ping
+```
 
-4. **Zero-trust** – Sub-agents only receive and can only call their role-specific tools (see `backend/agents/tools/`). The Orchestrator never executes tools; it only routes and builds STIX.
+**Graph not loading:**
+1. Check NEXT_PUBLIC_API_URL
+2. curl http://localhost:8000/api/graph
+3. Enable mock data
 
-5. **API** – POST `/api/agent/investigate` with `{ "goal": "natural language objective", "thread_id": "optional" }` runs the graph and returns `summary`, `threat_score`, `stix_bundle`, and `investigation_context`.
+**CORS errors:**
+Add CORSMiddleware to backend/api.py with allow_origins=["http://localhost:3000"]
 
-## Extracted Modules (backend/modules/)
+---
 
-| Module | Source | Invoked via |
-|--------|--------|-------------|
-| `shodan_recon` | am0nt31r0/OSINT-Search | `python -m run_module shodan_recon` |
-| `censys_recon` | am0nt31r0/OSINT-Search | `python -m run_module censys_recon` |
-| `scraper` | Hamed233/Digital-Footprint-OSINT-Tool | `python -m run_module scraper` |
-| `port_scanner` | Kcisti/bat-security-toolkit | `python -m run_module port_scanner` |
-| `cyberninja_passive` | Self-contained passive username enum | `python -m run_module cyberninja_passive` |
-| `graysentinel_ingest` | GraySentinel methodology | `python -m run_module graysentinel_ingest` – scrape, chunk, NER, embed, Weaviate |
-| `xrecon` | xRec0n-style | Stub in `modules/xrecon.py`; Searcher agent calls `xrecon_search` |
+## 12. Decision Log
 
-## Backend Agents (LangGraph)
+| Decision | Why |
+|----------|-----|
+| Absolute imports | Prevents ModuleNotFoundError |
+| Keyless-by-default | Works without API keys |
+| Cytoscape.js | Better graph performance |
+| Mock data | Offline development |
+| Glass morphism | Modern cyber aesthetic |
+| Subprocess isolation | Crash containment |
 
-| Component | Path | Description |
-|-----------|------|-------------|
-| State | `agents/state.py` | `OSINTAgentState`: goal, per-agent results, discovered_ips, threat_score, stix_bundle, investigation_context |
-| Searcher tools | `agents/tools/searcher_tools.py` | shodan_search, censys_search, scrape_urls, xrecon_search |
-| Analyzer tools | `agents/tools/analyzer_tools.py` | semantic_search, graysentinel_ingest, score_threat |
-| Pentester tools | `agents/tools/pentester_tools.py` | port_scan, cyberninja_passive |
-| Nodes | `agents/nodes.py` | searcher_node, analyzer_node, pentester_node, orchestrator_node |
-| Graph | `agents/graph.py` | `build_osint_graph(use_memory=True)` with checkpoint memory |
+---
 
-## Run
-
-### One-command DX Flow
+## 13. Quick Start
 
 ```bash
 cp .env.example .env
 docker compose up -d
-
 cd backend && pip install -r requirements.txt
-
-# Unified verification (infra + seed + dry-run E2E)
-python ../verify.py
-
-# Master orchestrator (backend + Celery + frontend)
-cd ..
+python verify.py
 python main.py
+cd frontend && npm run dev
 ```
 
-### Legacy manual flow (optional)
+Open http://localhost:3000
 
-```bash
-cp .env.example .env
-docker compose up -d
+---
 
-cd backend && pip install -r requirements.txt
-uvicorn api:app --reload           # FastAPI
-celery -A celery_app worker -l info  # Celery
+## 14. Phase Status
 
-cd frontend && npm install && npm run dev
-```
-
-## Environment
-
-- `CELERY_TASK_HARD_TIMEOUT` – Seconds before SIGKILL (default 300)
-- `CELERY_BROKER_URL` / `REDIS_URL` – Redis for Celery and pub/sub
-- `VAULT_SHODAN_API_KEY` – Simulated encrypted Shodan key (used by config injection)
-- `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` – Simulated encrypted Censys creds
-- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` – Neo4j connection for STIX ingestion
-- `WEAVIATE_HTTP_URI` – Weaviate HTTP URL (default `http://localhost:8080`) for semantic search
-- `DATABASE_URL` – PostgreSQL connection string (default from POSTGRES_* vars)
-- `RABBITMQ_URL` – RabbitMQ AMQP URL (default from RABBITMQ_* vars)
-- `DEFAULT_TENANT_ID` – Optional; used by config_injection when fetching from user_configs
-
-## Frontend
-
-Enterprise-grade UI built with Next.js 15, React 18, Tailwind CSS, Radix UI primitives, and Lucide icons. Dark-mode optimized (slate/zinc) with strategic neon accents: cyan for connections, amber for warnings, red for critical vulnerabilities.
-
-### Layout & Components
-
-1. **Global Navigation (Sidebar)** – Dashboard, Graph Explorer, Spatial Intelligence, Media Forensics, Reports, Secure Settings.
-2. **Unified Omnibar** – Prominent target input (Email, Domain, IP, Phone) with workflow dropdown: Low (passive), Standard (Shodan/Censys/scrape), Aggressive (port scan + CyberNinja), Agent (LangGraph multi-agent).
-3. **Main Canvas (Graph View)** – Interactive Cytoscape.js node/edge graph with:
-   - Floating toolbar: Zoom in/out, Fit to view, Force-directed layout toggle, Leaf-prune switch
-   - Vulnerability badges on server nodes (red border)
-   - Node click → detail panel
-4. **Progressive Disclosure Panel (Right)** – Slides out on node click; shows STIX 2.1 metadata, risk scores, entity resolution, keeping the canvas uncluttered.
-5. **Resizable Virtual Terminal (Bottom)** – Drag handle to resize; ANSI colorization for live streaming logs.
-6. **Media Forensics Modal** – Image forensics with interactive bounding boxes (faces: cyan, objects: amber).
-7. **Activity Timeline Modal** – Chronological bar chart of network activity frequency.
-
-### Design Principles
-
-- Progressive disclosure: macro-level summary first, detail on demand
-- Muted dark theme (slate-950, zinc) with cyan/amber/red accents for KPIs
-- High information density without cognitive overload
-
-## Status
-
-- [x] FastAPI as command dispatcher (no direct OSINT execution)
-- [x] Celery consumes from Redis
-- [x] Subprocess wrapper (`run_module` + Popen)
-- [x] Async stdout/stderr capture → Redis pub
-- [x] WebSocket `/ws/task/{task_id}` → real-time stream
-- [x] Hard timeout + SIGKILL on hang
-- [x] Frontend dashboard (Next.js 15, sidebar, Omnibar, graph canvas)
-- [x] Virtual terminal with ANSI colorization (resizable)
-- [x] Cytoscape.js graph (floating toolbar, zoom, force-directed, leaf-prune, vulnerability badges)
-- [x] GET `/api/graph` for Neo4j → Cytoscape
-- [x] docker-compose, .env.example
-- [x] Dynamic config injection (temp files, simulated Vault)
-- [x] CyberNinja passive sandbox wrapper
-- [x] STIX 2.1 mapping helpers + Neo4j client
-- [x] Weaviate integration: schema (OSINTDocument), add_documents, semantic_search (cosine)
-- [x] GraySentinel pipeline: scrape → chunk (by-title, similarity-based, context-aware) → NER → embed (sentence-transformers) → Weaviate
-- [x] POST `/api/ingest`, POST `/api/semantic-search` – natural-language semantic search
-- [x] LangGraph multi-agent orchestration (Searcher, Analyzer, Pentester, Orchestrator)
-- [x] Checkpoint memory for multi-step investigation chains; zero-trust scoped tools per agent
-- [x] POST `/api/agent/investigate` – goal-directed agentic workflow
-- [x] Enterprise UI: Omnibar, NodeDetailPanel (STIX metadata), MediaForensicsModal, ActivityTimelineModal
-- [x] PostgreSQL wiring: postgres_client.py, tenants/user_configs/audit_events, config_injection from user_configs, log_audit_event
-- [x] RabbitMQ: osint_events topic exchange, publish_enterprise_event, background consumer → audit_events
-- [x] repos/ folder deleted – fully independent application
-
-## PostgreSQL & RabbitMQ Integration
-
-- **PostgreSQL**: `postgres_client.py` – schema (tenants, user_configs, audit_events), `fetch_service_credentials`, `log_audit_event`. Config injection queries user_configs (fallback to env). All API endpoints log audit events on initiation.
-- **RabbitMQ**: `rabbitmq_client.py` – `publish_enterprise_event_sync` to `osint_events` topic. Routing keys: `osint.investigation.started`, `osint.investigation.completed`, `osint.stix.published`, `osint.threat.critical`. Background consumer subscribes to `osint.#` and logs to audit_events.
-
-
-
-
-docker compose up -d
-cd backend && pip install -r requirements.txt
-python scripts/check_services.py   # verify all 5 services
-python scripts/seed_db.py          # seed default tenant + configs
-uvicorn main:app --reload          # Terminal 1
-celery -A celery_app worker -l info # Terminal 2
-python scripts/simulate_investigation.py  # run E2E
+| Phase | Status |
+|-------|--------|
+| Phase 1 | Complete - Analysis |
+| Phase 2 | Complete - Backend |
+| Phase 3 | Complete - UI/UX |
+| Phase 4 | Pending - Integration |
+| Phase 5 | Pending - Testing |
