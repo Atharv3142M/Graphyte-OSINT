@@ -56,13 +56,17 @@ def _detect_python() -> str:
     return sys.executable
 
 
-def _spawn(name: str, cmd: List[str]) -> subprocess.Popen:
+def _spawn(name: str, cmd: List[str], cwd: str | None = None, use_shell: bool = False) -> subprocess.Popen:
     kwargs: Dict = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.STDOUT,
         "text": True,
         "bufsize": 1,
     }
+    if cwd:
+        kwargs["cwd"] = cwd
+    if use_shell:
+        kwargs["shell"] = True
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         kwargs["creationflags"] = creationflags
@@ -108,21 +112,35 @@ def main() -> int:
     print("Unified OSINT Platform - Master Orchestrator")
     print("=" * 72)
 
+    # Set project root as working directory for all subprocesses
+    ROOT = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(ROOT)
+    print(f"[INFO] Working directory: {ROOT}")
+    print(f"[INFO] Platform: {os.name}")
+
     # Commands
     py = _detect_python()
     uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--reload", "--port", "8000"]
     celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
     if os.name == "nt":
         celery_cmd += ["--pool=solo", "--concurrency=1"]
-    next_cmd = ["npm", "run", "dev", "--prefix", "frontend"]
+        print(f"[INFO] Windows detected: Celery using --pool=solo")
+        # On Windows, npm is a .cmd file and requires shell=True
+        next_cmd = "npm run dev --prefix frontend"
+    else:
+        next_cmd = ["npm", "run", "dev", "--prefix", "frontend"]
 
     procs: Dict[str, subprocess.Popen] = {}
     threads: List[threading.Thread] = []
 
     try:
-        procs["FASTAPI"] = _spawn("FASTAPI", uvicorn_cmd)
-        procs["CELERY"] = _spawn("CELERY", celery_cmd)
-        procs["NEXTJS"] = _spawn("NEXTJS", next_cmd)
+        procs["FASTAPI"] = _spawn("FASTAPI", uvicorn_cmd, cwd=ROOT)
+        procs["CELERY"] = _spawn("CELERY", celery_cmd, cwd=ROOT)
+        # On Windows, next_cmd is a string and needs shell=True
+        if os.name == "nt":
+            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT, use_shell=True)  # type: ignore[arg-type]
+        else:
+            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT)  # type: ignore[arg-type]
 
         # Start log streaming threads
         t_fastapi = threading.Thread(

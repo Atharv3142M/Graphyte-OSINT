@@ -1,6 +1,19 @@
 # Unified Enterprise OSINT Platform – API Reference
 
+**Version:** 0.1.0 (Phase 8 - Keyless Backend + Multi-Route Dashboard)
+**Last Updated:** 2026-03-29
+
 Base URL: `http://localhost:8000` (configurable via `NEXT_PUBLIC_API_URL` in frontend)
+
+## Authentication
+
+All API endpoints require the `X-Tenant-ID` header for multi-tenant isolation:
+
+```
+X-Tenant-ID: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+```
+
+Default tenant UUID is seeded automatically by `verify.py` or `seed_db.py`.
 
 ## REST Endpoints
 
@@ -24,6 +37,16 @@ These endpoints enqueue a Celery task and return a `task_id`. Use the WebSocket 
 | POST | `/api/censys` | `{ "target": string, "api_id"?: string, "api_secret"?: string }` | Censys host recon |
 | POST | `/api/scrape` | `{ "urls": string[], "max_workers"?: number }` | Scrape URLs for emails/phones |
 | POST | `/api/port-scan` | `{ "host": string, "ports"?: number[], "max_workers"?: number, "timeout"?: number }` | TCP port scan |
+| POST | `/api/dns-intel` | `{ "domain": string, "brute_subdomains"?: boolean, "wordlist"?: string[] }` | DNS reconnaissance (A, AAAA, MX, NS, TXT, SPF/DMARC parsing, subdomain discovery) |
+| POST | `/api/whois` | `{ "domain": string }` | WHOIS domain lookup |
+| POST | `/api/ssl-analyze` | `{ "host": string, "port"?: number, "timeout"?: number }` | SSL/TLS certificate analysis |
+| POST | `/api/http-security` | `{ "url": string, "timeout"?: number }` | HTTP security headers audit |
+| POST | `/api/tech-stack` | `{ "url": string, "timeout"?: number }` | Technology stack detection |
+| POST | `/api/cyberninja` | `{ "usernames": string[], "timeout"?: number, "site_list"?: string[] }` | Username enumeration across platforms |
+| POST | `/api/xrecon` | `{ "query": string, "query_type"?: "username"|"email"|"domain" }` | Cross-platform reconnaissance |
+| POST | `/api/social-hunter` | `{ "username": string, "max_concurrent"?: number }` | Social media presence check (50+ platforms) |
+| POST | `/api/cert-transparency` | `{ "domain": string, "use_html_fallback"?: boolean }` | Subdomain discovery via CT logs |
+| POST | `/api/deep-scraper` | `{ "url": string, "max_depth"?: number, "max_pages"?: number }` | Recursive deep web scraping |
 
 **Response (all task endpoints):**
 ```json

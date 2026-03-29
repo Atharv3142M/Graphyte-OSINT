@@ -14,7 +14,8 @@
       "Bash(npm install:*)",
       "Bash(cmd //c \"cd C:\\\\Users\\\\Admin\\\\Documents\\\\GitHub\\\\OSINT-Digital-Footprint-Visualizer\\\\frontend && npm run build 2>&1\")",
       "Bash(npm run:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }

@@ -41,6 +41,10 @@ except Exception:  # pragma: no cover - optional
     CYAN = "\033[96m"
     RESET = "\033[0m"
 
+# ASCII-safe status markers for cross-platform compatibility (Windows cp1252)
+STATUS_OK = "[OK]"
+STATUS_FAIL = "[FAIL]"
+
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
@@ -79,7 +83,7 @@ def step1_infra_check() -> bool:
     all_ok = True
     for name, fn in services:
         ok, msg = fn()
-        status = f"{GREEN}[✓]{RESET}" if ok else f"{RED}[ ]{RESET}"
+        status = f"{GREEN}{STATUS_OK}{RESET}" if ok else f"{RED}{STATUS_FAIL}{RESET}"
         print(f"  {status} {name} - {msg}")
         if not ok:
             all_ok = False

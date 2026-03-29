@@ -1,5 +1,10 @@
 # Unified Enterprise OSINT Platform – Architecture
 
+**Version:** Phase 9 (Systematic Bug Squashing)
+**Last Updated:** 2026-03-29
+
+---
+
 ## 1. Isolation-and-Wrapper Methodology
 
 The platform enforces strict isolation between the HTTP layer and OSINT execution:
@@ -18,15 +23,23 @@ Next.js (fetch) → FastAPI POST /api/shodan
     → Redis queue
     → Celery worker picks task
     → temporary_service_config("shodan") creates temp JSON
-    → subprocess.Popen([python, "-m", "run_module", "shodan_recon"])
+    → subprocess.Popen([python, "-m", "backend.run_module", "shodan_recon"])
         → stdin: JSON payload
-        → cwd: backend/
+        → cwd: project_root/ (ensures backend package is importable)
     → Worker threads read stdout/stderr line-by-line
     → Each line → redis.publish("osint:task:stream:{task_id}", json)
     → proc.wait() → parse final JSON from stdout
     → redis.publish(..., {"type": "result", "data": ...})
     → redis.publish(..., {"type": "done"})
 ```
+
+**Cross-Platform Subprocess Handling (Phase 9 fixes):**
+
+- `backend/tasks.py` sets `cwd=project_root` (not `backend/`) so `python -m backend.run_module` resolves correctly
+- `backend/run_module.py` wraps all module execution in try/except and outputs valid JSON on error
+- `backend/run_module.py` calls `sys.stdout.flush()` after each result to prevent buffering delays
+- `main.py` detects Windows and adds `--pool=solo` to Celery (prevents worker freeze on Windows)
+- `main.py` uses `shell=True` for npm command on Windows (required for `.cmd` file execution)
 
 ### Data Flow: WebSocket Stream
 
@@ -37,6 +50,27 @@ Next.js WebSocket /ws/task/{task_id}
     → On message → websocket.send_text(payload)
     → On {"type": "done"} → break, close
 ```
+
+### Error Handling (Phase 9)
+
+All OSINT module execution is wrapped in exception handlers:
+
+```python
+# backend/run_module.py
+try:
+    # module execution
+except Exception as e:
+    result = {
+        "error": str(e),
+        "traceback": traceback.format_exc(),
+        "success": False,
+    }
+# Always flush stdout
+print(json.dumps(result))
+sys.stdout.flush()
+```
+
+This ensures Celery always receives valid JSON, even on module failure. The `"No output"` bug was caused by missing exception handling - now all errors include full traceback for debugging.
 
 ## 2. Polyglot Persistence Strategy
 
@@ -114,6 +148,20 @@ All agent tools import from `backend/modules/` or top-level backend modules:
 
 ## 6. Frontend Architecture (Phase 4)
 
+### Build Verification (Phase 9)
+
+Next.js build is strict and validates all imports/routes:
+
+```bash
+cd frontend && npm run build
+```
+
+A successful build confirms:
+- No broken imports or missing variables
+- All TypeScript types resolved
+- Routing configuration valid
+- All pages statically generated or SSR-ready
+
 ### State Management — Zustand
 
 All global investigation state lives in `frontend/src/store/useInvestigationStore.ts` (Zustand store). The store is the single source of truth for:
@@ -176,3 +224,24 @@ Omnibar (handleInvestigate)
 |----------|---------|---------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend HTTP base |
 | `NEXT_PUBLIC_DEFAULT_TENANT_ID` | `aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee` | Multi-tenant header value |
+
+---
+
+## 9. Phase 9 Fixes Summary
+
+### Cross-Platform Execution (Windows)
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `verify.py` | Unicode crash on Windows (cp1252) | Replaced `✓`/`✗` with `[OK]`/`[FAIL]` ASCII markers |
+| `main.py` | Celery freeze on Windows | Auto-detects `os.name == 'nt'` and adds `--pool=solo` |
+| `main.py` | npm `.cmd` execution failure | Uses `shell=True` for npm command on Windows |
+| `main.py` | Wrong working directory | Sets `cwd=project_root` for all subprocesses |
+| `tasks.py` | Module import failure | Changed `cwd` from `backend/` to `project_root/` |
+| `run_module.py` | `"No output"` bug | Added try/except wrapper + `sys.stdout.flush()` |
+
+### Documentation Updates
+
+- `SETUP.md` - Added Windows-specific notes, Python dependencies list
+- `API_DOCS.md` - Documented all 15+ task endpoints, authentication headers
+- `ARCHITECTURE.md` - Added Phase 9 fixes summary, error handling patterns

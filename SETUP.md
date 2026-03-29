@@ -8,15 +8,27 @@ This guide walks you through installing prerequisites, setting up a Python virtu
 
 ### Windows (PowerShell)
 
-- **Docker Desktop** installed and running  
-- **Node.js 18+** (`node -v`)  
+- **Docker Desktop** installed and running
+- **Node.js 18+** (`node -v`)
 - **Python 3.10+** (`python --version`)
+- **Git Bash** recommended for best shell experience
 
 ### macOS / Linux
 
-- **Docker** and **Docker Compose** (`docker compose version`)  
-- **Node.js 18+** (`node -v`)  
+- **Docker** and **Docker Compose** (`docker compose version`)
+- **Node.js 18+** (`node -v`)
 - **Python 3.10+** (`python3 --version`)
+
+---
+
+### Python Dependencies
+
+All dependencies are installed via `pip install -r backend/requirements.txt`. Key packages:
+- `fastapi`, `uvicorn` - Web framework
+- `celery[redis]` - Task queue
+- `psycopg2-binary`, `redis`, `pika`, `neo4j`, `weaviate-client` - Data stores
+- `dnspython`, `beautifulsoup4`, `requests` - OSINT modules
+- `colorama` - Cross-platform colored terminal output
 
 ---
 
@@ -137,9 +149,9 @@ This starts Redis, RabbitMQ, Neo4j, Weaviate, and PostgreSQL.
 ## 7. Unified Verification
 
 Run the unified verification CLI to:
-- Check connectivity to all services
+- Check connectivity to all services (PostgreSQL, Redis, RabbitMQ, Neo4j, Weaviate)
 - Seed PostgreSQL with the default tenant
-- Perform a dry-run E2E investigation
+- Perform a dry-run E2E investigation (FastAPI + Celery)
 
 With the virtual environment activated, from the project root:
 
@@ -156,6 +168,8 @@ python verify.py
 ```
 
 If any service fails, the script will print diagnostics and exit with a non-zero code.
+
+**Note:** The verification script uses ASCII-safe status markers (`[OK]`, `[FAIL]`) for cross-platform compatibility.
 
 ---
 
@@ -180,6 +194,7 @@ python main.py
 This will:
 - Run `uvicorn backend.api:app --reload --port 8000`
 - Run `celery -A backend.celery_app worker --loglevel=info`
+  - **Windows:** Automatically adds `--pool=solo --concurrency=1` (required for Windows compatibility)
 - Run `npm run dev --prefix frontend`
 
 Logs from each process are multiplexed and prefixed:
@@ -188,6 +203,14 @@ Logs from each process are multiplexed and prefixed:
 - `[NEXTJS]` – frontend
 
 Press **Ctrl+C** to gracefully stop all services.
+
+### Windows-Specific Notes
+
+- The orchestrator automatically detects Windows (`os.name == 'nt'`) and:
+  - Adds `--pool=solo` to Celery (prevents worker freeze)
+  - Uses `shell=True` for npm command (required for `.cmd` file execution)
+  - Sets working directory to project root for all subprocesses
+- All processes run from the project root to ensure proper Python module resolution
 
 ---
 

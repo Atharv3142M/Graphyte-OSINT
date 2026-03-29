@@ -51,12 +51,16 @@ def _spawn_and_stream(
     if extra_env:
         env.update(extra_env)
 
+    # Project root is one level up from backend/ directory
+    # This ensures `python -m backend.run_module` can find the backend package
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
     proc = subprocess.Popen(
         [sys.executable, "-m", "backend.run_module", module_name],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        cwd=os.path.dirname(os.path.abspath(__file__)),
+        cwd=project_root,
         bufsize=0,
         env=env,
     )
