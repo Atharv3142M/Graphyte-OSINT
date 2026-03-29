@@ -146,22 +146,43 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
 /**
  * Connects to the task stream WebSocket and calls onMessage for each
  * received line. Returns the WebSocket instance so the caller can close it.
+ *
+ * Falls back to HTTP polling on the result endpoint if the WebSocket
+ * fails to connect within 3 seconds.
  */
 export function createTaskStream(
   taskId: string,
   onMessage: (data: string, parsed: Record<string, unknown> | null) => void,
-  onDone?: () => void,
-  onError?: (err: string) => void
+  onDone?: (finalResult?: unknown) => void,
+  onError?: (err: string) => void,
+  onStatusChange?: (status: "pending" | "started" | "success" | "failure") => void,
 ): WebSocket {
   const ws = new WebSocket(`${WS_BASE}/ws/task/${taskId}`);
+  let wsConnected = false;
+  let doneFired = false;
+  let fallbackStarted = false;
+
+  ws.onopen = () => {
+    wsConnected = true;
+    onStatusChange?.("started");
+  };
 
   ws.onmessage = (ev) => {
     try {
       const parsed = JSON.parse(ev.data as string) as Record<string, unknown>;
       onMessage(ev.data as string, parsed);
-      if (parsed?.type === "done") {
+
+      if (parsed?.type === "done" && !doneFired) {
+        doneFired = true;
         ws.close();
-        onDone?.();
+        // Extract final result if present
+        const result = parsed?.data ?? parsed?.result ?? undefined;
+        onDone?.(result);
+      }
+
+      // Propagate celery task status if present
+      if (parsed?.type === "result" && parsed?.status) {
+        onStatusChange?.(parsed.status as "success" | "failure");
       }
     } catch {
       // Plain text — pass raw string
@@ -170,12 +191,64 @@ export function createTaskStream(
   };
 
   ws.onerror = () => {
+    if (!wsConnected && !fallbackStarted) {
+      fallbackStarted = true;
+      pollTaskResult(taskId, onDone, onStatusChange);
+    }
     onError?.("WebSocket connection error");
   };
 
   ws.onclose = () => {
-    onDone?.();
+    // If ws.close() was called manually (done), don't trigger error path
   };
 
+  // Fallback: if WebSocket doesn't connect within 3s, fall back to HTTP polling
+  setTimeout(() => {
+    if (!wsConnected && !fallbackStarted) {
+      fallbackStarted = true;
+      ws.close();
+      pollTaskResult(taskId, onDone, onStatusChange);
+    }
+  }, 3000);
+
   return ws;
+}
+
+/**
+ * HTTP polling fallback when WebSocket fails or is unavailable.
+ * Polls /api/tasks/{task_id} every 2 seconds, max 150 attempts (5 minutes).
+ */
+function pollTaskResult(
+  taskId: string,
+  onDone?: (result?: unknown) => void,
+  onStatusChange?: (status: "pending" | "started" | "success" | "failure") => void,
+): void {
+  let attempts = 0;
+  const MAX_ATTEMPTS = 150;
+  const INTERVAL_MS = 2000;
+
+  const poll = async () => {
+    if (attempts >= MAX_ATTEMPTS) {
+      onStatusChange?.("failure");
+      return;
+    }
+    attempts++;
+
+    try {
+      const status = await getTaskStatus(taskId);
+      onStatusChange?.(status.status as "pending" | "started" | "success" | "failure");
+
+      if (status.status === "SUCCESS" || status.status === "FAILURE") {
+        onDone?.(status.result);
+        return;
+      }
+
+      setTimeout(poll, INTERVAL_MS);
+    } catch {
+      // Keep polling on error
+      setTimeout(poll, INTERVAL_MS);
+    }
+  };
+
+  poll();
 }

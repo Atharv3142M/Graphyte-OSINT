@@ -115,35 +115,106 @@ export default function DashboardPage() {
         );
         await refreshStats();
       } else {
-        const endpointMap: Partial<Record<WorkflowIntensity, string>> = {
-          low: "/api/dns-intel",
-          standard: "/api/shodan",
-          aggressive: "/api/port-scan",
+        // Map selected module type to API endpoint
+        const endpointMap: Record<string, { endpoint: string; body: Record<string, string> }> = {
+          "DNS Intel": { endpoint: "/api/dns-intel", body: { domain: target } },
+          "Port Scan": { endpoint: "/api/port-scan", body: { host: target } },
+          "WHOIS": { endpoint: "/api/whois", body: { domain: target } },
+          "SSL Analysis": { endpoint: "/api/ssl-analyze", body: { host: target } },
+          "HTTP Security": { endpoint: "/api/http-security", body: { url: target } },
+          "Tech Stack": { endpoint: "/api/tech-stack", body: { url: target } },
+          "Cert Transparency": { endpoint: "/api/cert-transparency", body: { domain: target } },
+          "Social Hunter": { endpoint: "/api/social-hunter", body: { username: target } },
+          "Deep Scraper": { endpoint: "/api/deep-scraper", body: { url: target } },
+          "Shodan Recon": { endpoint: "/api/shodan", body: { target } },
+          "Censys Recon": { endpoint: "/api/censys", body: { target } },
         };
-        const endpoint = endpointMap[intensity];
-        if (!endpoint) {
-          appendLog("\x1b[31m[Error]\x1b[0m Invalid intensity selection");
+        const selected = endpointMap[taskType];
+        if (!selected) {
+          appendLog(`\x1b[31m[Error]\x1b[0m Unknown module: ${taskType}`);
           setIsRunning(false);
           return;
         }
-        const res = await runModule(endpoint as Parameters<typeof runModule>[0], {
-          target,
-          domain: target,
-          host: target,
-        } as Parameters<typeof runModule>[1]);
-        appendLog(`\x1b[36m[Task]\x1b[0m ${res.task_id}`);
-        const ws = createTaskStream(res.task_id, (_raw, parsed) => {
-          if (parsed?.type === "done") {
-            setIsRunning(false);
-            setStatus("done");
-            setRecentTasks((prev) =>
-              prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
-            );
-            refreshStats().catch(console.error);
-          }
-        });
+        const res = await runModule(selected.endpoint as Parameters<typeof runModule>[0], selected.body as Parameters<typeof runModule>[1]);
+        appendLog(`\x1b[36m[Task]\x1b[0m Queued — ${res.task_id}`);
         appendLog(`\x1b[90mStream: ${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.host : 'ws://localhost:8000'}/ws/task/${res.task_id}\x1b[0m`);
-        return () => ws.close();
+
+        let wsClosed = false;
+        const ws = createTaskStream(
+          res.task_id,
+          (_raw, parsed) => {
+            // Forward stream messages to terminal
+            if (parsed?.type === "stdout" || parsed?.type === "stderr") {
+              const line = parsed.data as string;
+              if (line) appendLog(line);
+            }
+            if (parsed?.type === "result" && parsed?.data) {
+              const result = parsed.data as Record<string, unknown>;
+              if (result.error) {
+                appendLog(`\x1b[31m[Error]\x1b[0m ${result.error}`);
+              }
+            }
+          },
+          async (_finalResult) => {
+            // WebSocket sent "done" — fetch final task result from backend
+            setIsRunning(false);
+            try {
+              const taskResult = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/tasks/${res.task_id}`,
+                {
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Tenant-ID": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                  },
+                }
+              ).then((r) => r.json()) as { status: string; result?: Record<string, unknown> };
+
+              const isFailure =
+                taskResult.status === "FAILURE" ||
+                (taskResult.result && typeof taskResult.result === "object" && "error" in taskResult.result);
+
+              if (isFailure) {
+                setStatus("error");
+                const errMsg = taskResult.result?.error as string | undefined;
+                if (errMsg) appendLog(`\x1b[31m[Error]\x1b[0m ${errMsg}`);
+                setRecentTasks((prev) =>
+                  prev.map((t) => t.id === taskEntry.id ? { ...t, status: "failed" as const } : t)
+                );
+              } else {
+                setStatus("done");
+                setRecentTasks((prev) =>
+                  prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
+                );
+              }
+            } catch {
+              // Could not fetch task result — assume done
+              setStatus("done");
+              setRecentTasks((prev) =>
+                prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
+              );
+            }
+            refreshStats().catch(console.error);
+          },
+          (err) => {
+            appendLog(`\x1b[31m[WS Error]\x1b[0m ${err}`);
+          },
+          (celeryStatus) => {
+            // Map Celery status to UI status
+            if (celeryStatus === "started") {
+              setStatus("running");
+            } else if (celeryStatus === "success") {
+              setStatus("done");
+            } else if (celeryStatus === "failure") {
+              setStatus("error");
+              setIsRunning(false);
+              setRecentTasks((prev) =>
+                prev.map((t) => t.id === taskEntry.id ? { ...t, status: "failed" as const } : t)
+              );
+            }
+          }
+        );
+        appendLog(`\x1b[32m[WS]\x1b[0m Connected`);
+        return () => { ws.close(); };
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

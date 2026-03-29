@@ -11,17 +11,18 @@ import { useInvestigationStore } from "@/store/useInvestigationStore";
 /* ── Color map for node types ──────────────────────────── */
 const TYPE_COLORS: Record<string, { bg: string; border: string; glow: string }> = {
   default:          { bg: "#06b6d4", border: "#22d3ee", glow: "rgba(6,182,212,0.35)" },
-  ipv4_addr:        { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
-  "ipv4-addr":      { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
-  domain_name:      { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
-  "domain":         { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
-  network_traffic:  { bg: "#f59e0b", border: "#fbbf24", glow: "rgba(245,158,11,0.35)" },
-  note:             { bg: "#ec4899", border: "#f472b6", glow: "rgba(236,72,153,0.35)" },
-  server:           { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
-  url:              { bg: "#14b8a6", border: "#2dd4bf", glow: "rgba(20,184,166,0.35)" },
-  file:             { bg: "#f97316", border: "#fb923c", glow: "rgba(249,115,22,0.35)" },
-  email_addr:       { bg: "#a855f7", border: "#c084fc", glow: "rgba(168,85,247,0.35)" },
-  vulnerability:    { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
+  ipv4_addr:       { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
+  "ipv4-addr":     { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
+  domain_name:     { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
+  "domain":        { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
+  network_traffic: { bg: "#f59e0b", border: "#fbbf24", glow: "rgba(245,158,11,0.35)" },
+  "network-traffic":{ bg: "#f59e0b", border: "#fbbf24", glow: "rgba(245,158,11,0.35)" },
+  note:            { bg: "#ec4899", border: "#f472b6", glow: "rgba(236,72,153,0.35)" },
+  server:          { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
+  url:             { bg: "#14b8a6", border: "#2dd4bf", glow: "rgba(20,184,166,0.35)" },
+  file:            { bg: "#f97316", border: "#fb923c", glow: "rgba(249,115,22,0.35)" },
+  email_addr:      { bg: "#a855f7", border: "#c084fc", glow: "rgba(168,85,247,0.35)" },
+  vulnerability:   { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
 };
 
 interface GraphCanvasProps {
@@ -46,6 +47,7 @@ export function GraphCanvas({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [layoutType, setLayoutType] = useState<"cose" | "circle">("cose");
+  const [graphEmpty, setGraphEmpty] = useState(false);
 
   const graphData = useInvestigationStore((s) => s.graphData);
   const setGraphData = useInvestigationStore((s) => s.setGraphData);
@@ -65,14 +67,17 @@ export function GraphCanvas({
     if (!containerRef.current) return;
     setLoading(true);
     setError(null);
+
     try {
       let data;
 
-      /* Prefer live store data if present */
-      if (graphData && graphData.nodes.length > 0) {
+      /* Use store data if it has nodes */
+      if (graphData && graphData.nodes && graphData.nodes.length > 0) {
         data = graphData;
       } else {
+        /* Fetch fresh from Neo4j */
         data = await fetchGraph();
+        /* Store it so other components can use it */
         setGraphData(data);
       }
 
@@ -80,10 +85,12 @@ export function GraphCanvas({
       const elements = "elements" in data
         ? (data as { elements: { nodes: unknown[]; edges: unknown[] } }).elements
         : data as { nodes: unknown[]; edges: unknown[] };
-      let nodes = elements.nodes || [];
-      let edges = elements.edges || [];
+      const rawNodes = elements?.nodes ?? [];
+      const rawEdges = elements?.edges ?? [];
 
       /* Prune leaf nodes (degree ≤ 1) on demand */
+      let nodes = rawNodes;
+      let edges = rawEdges;
       if (pruneLeaves && nodes.length > 0) {
         const nodeIds = new Set<string>(
           (nodes as { data: { id: string } }[]).map((n) => n.data.id)
@@ -105,9 +112,21 @@ export function GraphCanvas({
         );
       }
 
-      /* Destroy existing instance */
+      /* Destroy existing instance before creating new one */
       cyRef.current?.destroy();
+      cyRef.current = null;
+      setNodeCount(0);
+      setEdgeCount(0);
+      setGraphEmpty(false);
 
+      /* If no nodes at all — show empty state */
+      if (nodes.length === 0) {
+        setLoading(false);
+        setGraphEmpty(true);
+        return;
+      }
+
+      /* Build Cytoscape instance */
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cy = cytoscape({
         container: containerRef.current,
@@ -126,7 +145,7 @@ export function GraphCanvas({
               "text-valign": "bottom",
               "text-halign": "center",
               "font-size": "9px",
-              "font-family": "Inter, system-ui, sans-serif",
+              "font-family": "Monaco, 'Courier New', monospace",
               color: "#cbd5e1",
               "text-margin-y": 6,
               "text-outline-color": "#0f172a",
@@ -208,7 +227,7 @@ export function GraphCanvas({
       cy.on("tap", "node", (evt) => {
         const node = evt.target as NodeSingular;
         const data = node.data();
-        const nodeType = data.type || node.classes()[0] || "node";
+        const nodeType = data.type || node.classes()[0] || "default";
         onNodeSelect({
           id: data.id,
           label: data.label,
@@ -228,6 +247,7 @@ export function GraphCanvas({
       cyRef.current = cy;
       setNodeCount(cy.nodes().length);
       setEdgeCount(cy.edges().length);
+      setGraphEmpty(cy.nodes().length === 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -235,7 +255,7 @@ export function GraphCanvas({
     }
   }, [pruneLeaves, layoutType, onNodeSelect, graphData, setGraphData]);
 
-  /* ── Load on mount; re-load when investigation completes ── */
+  /* ── Load on mount; re-load when graphData changes ── */
   useEffect(() => {
     loadGraph();
     return () => {
@@ -243,6 +263,13 @@ export function GraphCanvas({
       cyRef.current = null;
     };
   }, [loadGraph]);
+
+  /* ── Re-render when graphData is updated ── */
+  useEffect(() => {
+    if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+      loadGraph();
+    }
+  }, [graphData]);
 
   /* ── Sync selected node highlight in Cytoscape ──── */
   useEffect(() => {
@@ -263,28 +290,38 @@ export function GraphCanvas({
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <span className="text-sm text-slate-500">Loading graph…</span>
+            <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-400 animate-spin rounded-full" />
+            <span className="text-xs text-slate-500 font-mono">Loading graph…</span>
           </div>
         </div>
       )}
 
       {/* Error */}
-      {error && (
+      {error && !loading && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="glass-panel rounded-2xl px-6 py-4 max-w-sm text-center">
+          <div className="soc-panel px-6 py-4 max-w-sm text-center border-red-900/50">
             <AlertTriangle className="w-5 h-5 text-red-400 mx-auto mb-2" />
-            <span className="text-red-400 text-sm">{error}</span>
+            <span className="text-red-400 text-xs font-mono">{error}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state — no mock data, just clear message */}
+      {graphEmpty && !loading && !error && (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center">
+            <div className="text-xs text-slate-600 font-mono mb-2">No entities in graph</div>
+            <div className="text-[10px] text-slate-700 font-mono">Run an investigation to populate the graph</div>
           </div>
         </div>
       )}
 
       {/* Live indicator */}
-      {!loading && !error && (
-        <div className="absolute top-4 right-4 z-20">
-          <div className="glass-panel rounded-xl px-3 py-1.5 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[10px] text-slate-400 font-medium">Live</span>
+      {!loading && !error && !graphEmpty && (
+        <div className="absolute top-3 right-3 z-20">
+          <div className="soc-panel px-2.5 py-1 flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[9px] text-slate-500 font-medium uppercase tracking-widest">Live</span>
           </div>
         </div>
       )}
@@ -293,59 +330,61 @@ export function GraphCanvas({
       <div ref={containerRef} className="w-full h-full" />
 
       {/* ── Floating toolbar (bottom-right) ─────────────── */}
-      <div className="absolute bottom-4 right-4 flex items-center gap-1.5 z-20">
+      <div className="absolute bottom-3 right-3 flex items-center gap-1 z-20">
         <button
           onClick={zoomIn}
-          className="p-2 rounded-xl glass-panel hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-all"
+          className="p-1.5 soc-panel hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition-all"
           title="Zoom in"
         >
-          <ZoomIn className="w-4 h-4" />
+          <ZoomIn className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={zoomOut}
-          className="p-2 rounded-xl glass-panel hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-all"
+          className="p-1.5 soc-panel hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition-all"
           title="Zoom out"
         >
-          <ZoomOut className="w-4 h-4" />
+          <ZoomOut className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={fit}
-          className="p-2 rounded-xl glass-panel hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-all"
+          className="p-1.5 soc-panel hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition-all"
           title="Fit to view"
         >
-          <Maximize2 className="w-4 h-4" />
+          <Maximize2 className="w-3.5 h-3.5" />
         </button>
-        <div className="w-px h-5 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-slate-700 mx-0.5" />
         <button
           onClick={() => setLayoutType((l) => (l === "cose" ? "circle" : "cose"))}
           className={cn(
-            "p-2 rounded-xl glass-panel hover:bg-white/10 transition-all",
-            layoutType === "cose" ? "text-cyan-400" : "text-slate-400"
+            "p-1.5 soc-panel hover:bg-slate-800 transition-all",
+            layoutType === "cose" ? "text-cyan-500" : "text-slate-500"
           )}
           title={layoutType === "cose" ? "Switch to circle" : "Switch to force-directed"}
         >
-          <Layers className="w-4 h-4" />
+          <Layers className="w-3.5 h-3.5" />
         </button>
-        <label className="flex items-center gap-2 px-3 py-2 rounded-xl glass-panel cursor-pointer text-slate-400 hover:text-slate-200 transition-all">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-          <span className="text-[11px]">Prune</span>
+        <label className="flex items-center gap-1 px-2 py-1.5 soc-panel cursor-pointer text-slate-500 hover:text-slate-300 transition-all">
+          <AlertTriangle className="w-3 h-3 text-amber-600" />
+          <span className="text-[10px] uppercase tracking-wider">Prune</span>
           <input
             type="checkbox"
             checked={pruneLeaves}
             onChange={(e) => onPruneChange(e.target.checked)}
-            className="rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-cyan-500 w-3 h-3"
+            className="rounded-sm border-slate-700 bg-slate-900 text-amber-600 w-3 h-3"
           />
         </label>
       </div>
 
       {/* ── Stats badge (bottom-left) ──────────────────── */}
-      <div className="absolute bottom-4 left-4 z-20">
-        <div className="glass-panel rounded-xl px-3 py-1.5 flex items-center gap-3">
-          <span className="text-[11px] text-slate-500 font-medium">{nodeCount} nodes</span>
-          <span className="w-px h-3 bg-white/10" />
-          <span className="text-[11px] text-slate-500 font-medium">{edgeCount} edges</span>
+      {!graphEmpty && !loading && !error && (
+        <div className="absolute bottom-3 left-3 z-20">
+          <div className="soc-panel px-2.5 py-1 flex items-center gap-3">
+            <span className="text-[10px] text-slate-500 font-mono">{nodeCount} nodes</span>
+            <span className="w-px h-2.5 bg-slate-700" />
+            <span className="text-[10px] text-slate-500 font-mono">{edgeCount} edges</span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

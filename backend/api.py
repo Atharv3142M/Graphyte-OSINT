@@ -639,12 +639,25 @@ def get_graph():
 
 @app.get("/api/tasks/{task_id}")
 def get_task_result(task_id: str):
+    """
+    Poll Celery task status. If the task is complete, waits for the result
+    and returns it inline so the caller gets the full payload without a
+    second round-trip.
+    """
     from backend.celery_app import celery_app
+    import time
 
     r = celery_app.AsyncResult(task_id)
     if r.ready():
-        return {"task_id": task_id, "status": r.status, "result": r.result}
-    return {"task_id": task_id, "status": r.status}
+        # Task is done — return status + the actual result dict
+        return {
+            "task_id": task_id,
+            "status": str(r.status),
+            "result": r.result if r.result is not None else {},
+        }
+
+    # Not ready yet — return current status without blocking
+    return {"task_id": task_id, "status": str(r.status), "result": None}
 
 
 REDIS_CHAN_PREFIX = "osint:task:stream:"

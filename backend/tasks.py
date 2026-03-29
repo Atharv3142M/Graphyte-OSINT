@@ -172,6 +172,9 @@ def _run_module_subprocess(
     Optionally create a temporary config for sensitive modules, then spawn and stream.
     After a successful result, ingest STIX bundle into Neo4j.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     service = MODULE_SECRET_SERVICE.get(module_name)
     if service:
         with temporary_service_config(service) as (_, config_path):
@@ -184,7 +187,9 @@ def _run_module_subprocess(
         result = _spawn_and_stream(module_name, payload, task_id, redis_client)
 
     # Best-effort STIX enrichment — don't fail the task if Neo4j is unavailable
-    if result and result.get("success") and not result.get("error"):
+    has_error = result and result.get("error")
+    logger.debug("[STIX] module=%s result_success=%s has_error=%s", module_name, not has_error, bool(has_error))
+    if not has_error:
         _ingest_stix_bundle(module_name, result)
 
     return result
