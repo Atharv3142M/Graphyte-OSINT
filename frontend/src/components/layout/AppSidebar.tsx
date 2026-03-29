@@ -9,6 +9,7 @@ import {
   Network,
   FileText,
   ScanSearch,
+  Settings,
 } from "lucide-react";
 
 const NAV_ITEMS: {
@@ -21,20 +22,21 @@ const NAV_ITEMS: {
   { id: "tools", label: "Tools", icon: Wrench, href: "/tools" },
   { id: "workspace", label: "Workspace", icon: Network, href: "/workspace" },
   { id: "reports", label: "Reports", icon: FileText, href: "/reports" },
+  { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-[60px] h-full glass-panel-dense flex flex-col items-center py-4 gap-1 border-r border-white/[0.06]">
+    <aside className="w-[56px] h-full soc-panel-dense flex flex-col items-center py-3 gap-1 border-r border-slate-800">
       {/* Logo */}
-      <div className="w-10 h-10 rounded-xl bg-cyan-500/15 flex items-center justify-center mb-2 glow-cyan-subtle">
-        <ScanSearch className="w-4.5 h-4.5 text-cyan-400" />
+      <div className="w-9 h-9 border border-cyan-900 bg-cyan-950/50 flex items-center justify-center mb-2">
+        <ScanSearch className="w-4 h-4 text-cyan-500" />
       </div>
 
       {/* Nav items */}
-      <nav className="flex-1 flex flex-col items-center gap-1 w-full px-2">
+      <nav className="flex-1 flex flex-col items-center gap-0.5 w-full px-1.5">
         {NAV_ITEMS.map(({ id, label, icon: Icon, href }) => {
           const isActive = pathname === href || (id === "dashboard" && pathname === "/");
           return (
@@ -42,18 +44,18 @@ export function AppSidebar() {
               key={id}
               href={href}
               className={cn(
-                "w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 group relative",
+                "w-10 h-10 flex items-center justify-center transition-all duration-150 group relative",
                 isActive
-                  ? "bg-cyan-500/15 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
-                  : "text-slate-500 hover:text-slate-300 hover:bg-white/5"
+                  ? "bg-cyan-950/60 text-cyan-400 border border-cyan-900/50"
+                  : "text-slate-600 hover:text-slate-400 hover:bg-white/[0.03]"
               )}
             >
-              <Icon className="w-5 h-5" />
+              <Icon className="w-4 h-4" />
               {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r-full bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-cyan-500" />
               )}
               {/* Tooltip */}
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg glass-panel text-xs text-slate-200 font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 soc-panel text-[10px] text-slate-300 font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
                 {label}
               </div>
             </Link>
@@ -62,7 +64,7 @@ export function AppSidebar() {
       </nav>
 
       {/* Version */}
-      <div className="text-[9px] text-slate-600 leading-none tracking-wide mt-2">v0.2</div>
+      <div className="text-[8px] text-slate-700 leading-none tracking-wide mt-1">v0.3</div>
     </aside>
   );
 }

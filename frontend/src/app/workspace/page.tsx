@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import { GraphCanvas } from "@/components/GraphCanvas";
 import { NodeDetailPanel } from "@/components/NodeDetailPanel";
 import { useInvestigationStore } from "@/store/useInvestigationStore";
-import { ZoomIn, ZoomOut, Maximize2, Layers, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function WorkspacePage() {
@@ -45,16 +44,14 @@ export default function WorkspacePage() {
       />
 
       {/* Workspace Info Badge */}
-      <div className="absolute top-4 left-4 z-20">
-        <div className="glass-panel rounded-xl px-4 py-2 flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-slate-300 font-medium">Graph Workspace</span>
+      <div className="absolute top-3 left-3 z-20">
+        <div className="soc-panel px-3 py-1.5 flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Graph Workspace</span>
           </div>
-          <div className="w-px h-4 bg-white/10" />
-          <div className="text-xs text-slate-500">
-            Click nodes to inspect, drag to explore
-          </div>
+          <div className="w-px h-3 bg-slate-700" />
+          <span className="text-[9px] text-slate-600">Click nodes to inspect</span>
         </div>
       </div>
     </div>

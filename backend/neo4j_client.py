@@ -97,15 +97,16 @@ def _merge_object(tx, obj: Dict[str, Any]) -> None:
         tgt = obj.get("target_ref")
         rel_type = obj.get("relationship_type", "related-to")
         if src and tgt:
+            # Useapoc.create.rel to safely create dynamic relationship type
+            safe_rel_type = rel_type.replace("-", "_").replace(":", "_")
             tx.run(
-                """
-                MATCH (a:Stix {id: $src}), (b:Stix {id: $tgt})
-                MERGE (a)-[r:`RELTYPE:` + $rel_type]->(b)
+                f"""
+                MATCH (a:Stix {{id: $src}}), (b:Stix {{id: $tgt}})
+                MERGE (a)-[r:`{safe_rel_type}`]->(b)
                 SET r.id = $rel_id
                 """,
                 src=src,
                 tgt=tgt,
-                rel_type=rel_type.replace("-", "_"),
                 rel_id=obj_id,
             )
 

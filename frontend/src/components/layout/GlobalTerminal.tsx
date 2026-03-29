@@ -8,7 +8,7 @@ import { useInvestigationStore } from "@/store/useInvestigationStore";
 
 export function GlobalTerminal() {
   const containerRef = useRef<HTMLPreElement>(null);
-  const [height, setHeight] = useState(180);
+  const [height, setHeight] = useState(160);
   const [dragging, setDragging] = useState(false);
   const startY = useRef(0);
   const startH = useRef(0);
@@ -31,7 +31,7 @@ export function GlobalTerminal() {
     if (!dragging) return;
     const onMove = (e: MouseEvent) => {
       const delta = startY.current - e.clientY;
-      const newH = Math.min(350, Math.max(80, startH.current + delta));
+      const newH = Math.min(320, Math.max(60, startH.current + delta));
       setHeight(newH);
     };
     const onUp = () => setDragging(false);
@@ -46,10 +46,10 @@ export function GlobalTerminal() {
   const displayLines = streamLog.slice(-500);
 
   return (
-    <div className="glass-panel-dense rounded-t-xl overflow-hidden flex flex-col border-t border-white/[0.06]">
+    <div className="soc-panel-dense overflow-hidden flex flex-col border-t border-slate-800">
       {/* Drag handle + collapse header */}
       <div
-        className="flex items-center justify-between px-3 py-2 cursor-ns-resize select-none border-b border-white/[0.04] bg-slate-900/50"
+        className="flex items-center justify-between px-3 py-1.5 cursor-ns-resize select-none border-b border-slate-800/50 bg-slate-950/50"
         onMouseDown={(e) => {
           if (e.detail === 2) {
             setExpanded((v) => !v);
@@ -61,16 +61,16 @@ export function GlobalTerminal() {
         }}
       >
         <div className="flex items-center gap-2">
-          <Terminal className="w-3.5 h-3.5 text-cyan-500" />
-          <span className="text-[11px] font-semibold text-slate-400 tracking-wide">Console</span>
+          <Terminal className="w-3 h-3 text-cyan-600" />
+          <span className="text-[10px] font-semibold text-slate-500 tracking-widest uppercase">Console</span>
           {streamLog.length > 0 && (
-            <span className="text-[10px] text-slate-600 tabular-nums">{streamLog.length} lines</span>
+            <span className="text-[9px] text-slate-700 tabular-nums">{streamLog.length} lines</span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={clearLog}
-            className="p-1 rounded-md hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors text-[10px] px-2"
+            className="p-1 text-slate-600 hover:text-slate-400 transition-colors text-[10px]"
           >
             Clear
           </button>
@@ -79,9 +79,9 @@ export function GlobalTerminal() {
               e.stopPropagation();
               setExpanded((v) => !v);
             }}
-            className="p-1 rounded-md hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-colors"
+            className="p-1 text-slate-600 hover:text-slate-400 transition-colors"
           >
-            {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
           </button>
         </div>
       </div>
@@ -90,11 +90,11 @@ export function GlobalTerminal() {
       {expanded && (
         <pre
           ref={containerRef}
-          className="flex-1 overflow-auto font-mono text-[11px] text-slate-300 px-3 py-2 leading-[1.7]"
-          style={{ height, minHeight: 60 }}
+          className="flex-1 overflow-auto font-mono text-[10px] text-slate-400 px-3 py-1.5 leading-[1.6]"
+          style={{ height, minHeight: 48 }}
         >
           {displayLines.length === 0 && (
-            <span className="text-slate-600 italic">Ready. Enter a target to begin investigation.</span>
+            <span className="text-slate-700 italic">Ready — enter a target to begin investigation.</span>
           )}
           {displayLines.map((raw, i) => {
             const escaped = raw

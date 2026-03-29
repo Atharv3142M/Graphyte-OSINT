@@ -64,10 +64,11 @@ backend/
 
 frontend/
 └── src/app/
-    ├── dashboard/        # Investigation launcher
-    ├── tools/            # OSINT module grid
-    ├── workspace/        # Full-screen STIX graph (Cytoscape.js)
-    └── reports/          # Report generation and export
+    ├── dashboard/        # Investigation launcher with real graph stats
+    ├── tools/           # OSINT module grid (9 modules)
+    ├── workspace/       # Full-screen STIX graph (Cytoscape.js)
+    ├── reports/         # Report generation and export
+    └── settings/       # API key management + env var editor
 
 docker-compose.yml        # Redis, RabbitMQ, Neo4j, Weaviate, PostgreSQL
 main.py                   # Master orchestrator (starts all 3 services)
@@ -130,7 +131,17 @@ Without keys, both modules fall back to public data sources seamlessly.
 
 ## STIX 2.1 Compliance
 
-Every module result is automatically converted into a STIX 2.1 bundle and ingested into Neo4j, producing a live threat-intelligence graph. Fetch the graph at `GET /api/graph`.
+Every module result is automatically converted into a STIX 2.1 bundle and ingested into Neo4j, producing a live threat-intelligence graph. Fetch the graph at `GET /api/graph`. All 15 OSINT modules now produce STIX objects — ipv4-addr, domain-name, network-traffic, user-account, note, url, software, file, location, and email-addr nodes with relationship edges.
+
+## Frontend Pages
+
+| Page | Route | Purpose |
+|------|-------|---------|
+| Dashboard | `/dashboard` | Quick investigation launcher, real-time graph stats |
+| Tools | `/tools` | All 9 OSINT modules in a grid |
+| Workspace | `/workspace` | Full-screen Cytoscape STIX graph |
+| Reports | `/reports` | Generate and download investigation reports |
+| Settings | `/settings` | API key management and env var editor |
 
 ---
 

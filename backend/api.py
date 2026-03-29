@@ -580,6 +580,49 @@ def get_report(report_type: str):
         )
 
 
+class SettingsEnvRequest(BaseModel):
+    key: str
+    value: str
+
+
+class SettingsEnvResponse(BaseModel):
+    success: bool
+    message: str
+
+
+@app.post("/api/settings/env")
+def update_env_var(req: SettingsEnvRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    Update a single environment variable in the running process.
+    Note: In production, environment variables are read at startup.
+    For persistent changes, update your .env file or vault configuration.
+    This endpoint allows runtime adjustment for the current session.
+    """
+    import os
+    _log_audit(x_tenant_id, "update_env_var", req.key, "initiated")
+    # Apply to current process environment
+    os.environ[req.key] = req.value
+    return {"success": True, "message": f"{req.key} updated (session scope)"}
+
+
+@app.get("/api/settings/env")
+def get_env_vars(x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    Return all relevant environment variables (non-sensitive subset).
+    Sensitive keys (passwords, secrets) are redacted.
+    """
+    import os
+    sensitive = {"NEO4J_PASSWORD", "RABBITMQ_URL", "VAULT_SHODAN_API_KEY", "VAULT_CENSYS_API_SECRET"}
+    env_vars: Dict[str, str] = {}
+    for key, val in os.environ.items():
+        if any(key.startswith(p) for p in ["VAULT_", "CELERY_", "REDIS_", "NEO4J_", "WEAVIATE", "RABBITMQ", "NEXT_PUBLIC", "POSTGRES"]):
+            if any(s in key.upper() for s in sensitive):
+                env_vars[key] = "***REDACTED***"
+            else:
+                env_vars[key] = val
+    return {"env_vars": env_vars}
+
+
 @app.get("/api/graph")
 def get_graph():
     """Fetch STIX graph from Neo4j in Cytoscape format."""

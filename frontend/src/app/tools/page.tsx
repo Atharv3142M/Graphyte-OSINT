@@ -8,11 +8,11 @@ export default function ToolsPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-950">
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-4 max-w-7xl mx-auto space-y-3">
         {/* Header */}
         <div>
-          <h1 className="text-xl font-semibold text-slate-100">OSINT Tools</h1>
-          <p className="text-sm text-slate-400 mt-1">Individual reconnaissance and analysis modules</p>
+          <h1 className="text-sm font-semibold text-slate-100 tracking-tight uppercase">OSINT Modules</h1>
+          <p className="text-[10px] text-slate-600 mt-0.5">Individual reconnaissance and analysis tools</p>
         </div>
 
         {/* Module Grid */}

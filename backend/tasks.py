@@ -143,18 +143,23 @@ def _spawn_and_stream(
 
 
 def _ingest_stix_bundle(module_name: str, result: dict) -> None:
-    """Convert module result to STIX bundle and ingest into Neo4j silently."""
+    """Convert module result to STIX bundle and ingest into Neo4j."""
+    import logging
+    logger = logging.getLogger(__name__)
     try:
         from backend.stix_pipeline import build_stix_bundle
         from backend.neo4j_client import Neo4jClient
 
         bundle = build_stix_bundle(module_name, result)
-        if bundle:
-            client = Neo4jClient()
-            client.ingest_bundle(bundle)
-            client.close()
-    except Exception:
-        pass  # Non-fatal: Neo4j is best-effort enrichment
+        if not bundle:
+            logger.warning("[STIX] No bundle produced for module=%s (empty or failed result)", module_name)
+            return
+        client = Neo4jClient()
+        client.ingest_bundle(bundle)
+        client.close()
+        logger.info("[STIX] Ingested bundle for module=%s: %d objects", module_name, len(bundle.get("objects", [])))
+    except Exception as e:
+        logger.error("[STIX] Ingestion failed for module=%s: %s", module_name, e)
 
 
 def _run_module_subprocess(

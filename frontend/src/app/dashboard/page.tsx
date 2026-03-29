@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Search,
   Target,
@@ -13,9 +13,12 @@ import {
   Database,
   Globe,
   Lock,
+  RefreshCw,
+  Server,
+  Wifi,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { investigate, runModule, createTaskStream, fetchGraph, type ModuleEndpoint } from "@/lib/api";
+import { investigate, runModule, createTaskStream, fetchGraph } from "@/lib/api";
 import { useInvestigationStore } from "@/store/useInvestigationStore";
 
 type WorkflowIntensity = "low" | "standard" | "aggressive" | "agent";
@@ -27,37 +30,71 @@ const INTENSITIES: { value: WorkflowIntensity; label: string; color: string }[] 
   { value: "agent", label: "AI Agent", color: "text-violet-400" },
 ];
 
-interface RecentActivity {
-  id: string;
-  target: string;
-  type: string;
-  status: "completed" | "running" | "failed";
-  timestamp: string;
-  riskScore?: number;
-}
-
-const RECENT_ACTIVITIES: RecentActivity[] = [
-  { id: "1", target: "example.com", type: "DNS Intel", status: "completed", timestamp: "2 min ago", riskScore: 0.23 },
-  { id: "2", target: "192.168.1.1", type: "Port Scan", status: "completed", timestamp: "15 min ago", riskScore: 0.67 },
-  { id: "3", target: "test-site.org", type: "SSL Analysis", status: "running", timestamp: "Just now" },
-  { id: "4", target: "admin.io", type: "WHOIS", status: "completed", timestamp: "1 hour ago", riskScore: 0.12 },
-  { id: "5", target: "suspicious.net", type: "HTTP Security", status: "failed", timestamp: "2 hours ago" },
-];
-
 export default function DashboardPage() {
   const [target, setTarget] = useState("");
   const [intensity, setIntensity] = useState<WorkflowIntensity>("standard");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
 
+  const [graphStats, setGraphStats] = useState({ nodes: 0, edges: 0 });
+  const [recentTasks, setRecentTasks] = useState<Array<{
+    id: string;
+    target: string;
+    type: string;
+    status: "completed" | "running" | "failed";
+    timestamp: string;
+    riskScore?: number;
+  }>>([]);
+  const [taskType, setTaskType] = useState<string>("DNS Intel");
+
   const appendLog = useInvestigationStore((s) => s.appendLog);
   const setGraphData = useInvestigationStore((s) => s.setGraphData);
   const setStatus = useInvestigationStore((s) => s.setStatus);
+  const streamLog = useInvestigationStore((s) => s.streamLog);
+
+  // Fetch real graph stats on mount
+  useEffect(() => {
+    const loadGraphStats = async () => {
+      try {
+        const data = await fetchGraph();
+        const nodeCount = data.nodes?.length ?? 0;
+        const edgeCount = data.edges?.length ?? 0;
+        setGraphStats({ nodes: nodeCount, edges: edgeCount });
+        if (nodeCount > 0) {
+          setGraphData(data);
+        }
+      } catch {
+        // Graph may be empty — no data to load
+      }
+    };
+    loadGraphStats();
+  }, [setGraphData]);
+
+  // Poll graph stats whenever a task completes
+  const refreshStats = useCallback(async () => {
+    try {
+      const data = await fetchGraph();
+      setGraphStats({ nodes: data.nodes?.length ?? 0, edges: data.edges?.length ?? 0 });
+      setGraphData(data);
+    } catch {
+      // Non-blocking
+    }
+  }, [setGraphData]);
 
   const handleInvestigate = useCallback(async () => {
     if (!target.trim()) return;
     setIsRunning(true);
+    setStatus("running");
     appendLog(`\x1b[35m[Dashboard]\x1b[0m Starting investigation: "${target}"`);
+
+    const taskEntry = {
+      id: Date.now().toString(),
+      target: target.trim(),
+      type: taskType,
+      status: "running" as const,
+      timestamp: "Just now",
+    };
+    setRecentTasks((prev) => [taskEntry, ...prev.slice(0, 9)]);
 
     try {
       if (intensity === "agent") {
@@ -73,51 +110,59 @@ export default function DashboardPage() {
           }
         }
         setStatus("done");
+        setRecentTasks((prev) =>
+          prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
+        );
+        await refreshStats();
       } else {
-        const endpoints: Partial<Record<WorkflowIntensity, ModuleEndpoint>> = {
+        const endpointMap: Partial<Record<WorkflowIntensity, string>> = {
           low: "/api/dns-intel",
           standard: "/api/shodan",
           aggressive: "/api/port-scan",
         };
-        const endpoint = endpoints[intensity];
+        const endpoint = endpointMap[intensity];
         if (!endpoint) {
           appendLog("\x1b[31m[Error]\x1b[0m Invalid intensity selection");
           setIsRunning(false);
           return;
         }
-        const res = await runModule(endpoint, { target, domain: target, host: target });
+        const res = await runModule(endpoint as Parameters<typeof runModule>[0], {
+          target,
+          domain: target,
+          host: target,
+        } as Parameters<typeof runModule>[1]);
         appendLog(`\x1b[36m[Task]\x1b[0m ${res.task_id}`);
         const ws = createTaskStream(res.task_id, (_raw, parsed) => {
           if (parsed?.type === "done") {
             setIsRunning(false);
-            fetchGraph().then(setGraphData).catch(console.error);
+            setStatus("done");
+            setRecentTasks((prev) =>
+              prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
+            );
+            refreshStats().catch(console.error);
           }
         });
-        appendLog(`\x1b[90mStream: ${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/ws/task/${res.task_id}\x1b[0m`);
+        appendLog(`\x1b[90mStream: ${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.host : 'ws://localhost:8000'}/ws/task/${res.task_id}\x1b[0m`);
         return () => ws.close();
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       appendLog(`\x1b[31m[Error]\x1b[0m ${msg}`);
       setStatus("error");
+      setRecentTasks((prev) =>
+        prev.map((t) => t.id === taskEntry.id ? { ...t, status: "failed" as const } : t)
+      );
     } finally {
       setIsRunning(false);
     }
-  }, [target, intensity, appendLog, setGraphData, setStatus]);
+  }, [target, intensity, appendLog, setGraphData, setStatus, refreshStats, taskType]);
 
   const currentIntensity = INTENSITIES.find((i) => i.value === intensity)!;
-
-  const stats = [
-    { label: "Total Scans", value: "1,247", change: "+12%", icon: Database, color: "text-cyan-400" },
-    { label: "Active Threats", value: "23", change: "-5%", icon: Shield, color: "text-red-400" },
-    { label: "Avg Risk Score", value: "0.42", change: "+0.03", icon: TrendingUp, color: "text-amber-400" },
-    { label: "Entities Mapped", value: "8,432", change: "+234", icon: Globe, color: "text-violet-400" },
-  ];
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "completed": return <CheckCircle className="w-4 h-4 text-emerald-400" />;
-      case "running": return <Activity className="w-4 h-4 text-cyan-400 animate-pulse" />;
+      case "running": return <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />;
       case "failed": return <AlertTriangle className="w-4 h-4 text-red-400" />;
       default: return <Clock className="w-4 h-4 text-slate-400" />;
     }
@@ -130,56 +175,95 @@ export default function DashboardPage() {
     return "text-emerald-400";
   };
 
+  // Calculate risk distribution from recent tasks
+  const completedTasks = recentTasks.filter((t) => t.status === "completed");
+  const criticalCount = completedTasks.filter((t) => (t.riskScore ?? 0) >= 0.7).length;
+  const highCount = completedTasks.filter((t) => (t.riskScore ?? 0) >= 0.4 && (t.riskScore ?? 0) < 0.7).length;
+  const mediumCount = completedTasks.filter((t) => (t.riskScore ?? 0) >= 0.2 && (t.riskScore ?? 0) < 0.4).length;
+  const lowCount = completedTasks.filter((t) => (t.riskScore ?? 0) < 0.2).length;
+  const totalScans = graphStats.nodes;
+  const securityScore = totalScans > 0
+    ? Math.min(99, 40 + Math.round((graphStats.edges / Math.max(graphStats.nodes, 1)) * 20))
+    : 0;
+
   return (
     <div className="h-full overflow-y-auto bg-slate-950">
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="p-4 max-w-7xl mx-auto space-y-4">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-slate-100">Dashboard</h1>
-            <p className="text-sm text-slate-400 mt-1">Overview of your OSINT investigations</p>
+            <h1 className="text-lg font-semibold text-slate-100 tracking-tight">OSINT Command Center</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {graphStats.nodes > 0
+                ? `${graphStats.nodes} entities, ${graphStats.edges} relationships in graph`
+                : "No entities in graph — run an investigation"}
+            </p>
           </div>
+          <button
+            onClick={() => refreshStats()}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-cyan-400 border border-slate-800 hover:border-slate-700 transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
         </div>
 
         {/* Quick Investigation */}
-        <div className="glass-panel rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Target className="w-4 h-4 text-cyan-400" />
-            <h2 className="text-sm font-semibold text-slate-200">Quick Investigation</h2>
+        <div className="border border-slate-800 bg-slate-900/60 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Target className="w-3.5 h-3.5 text-cyan-400" />
+            <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Quick Investigation</h2>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
               <input
                 type="text"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleInvestigate()}
-                placeholder="Enter IP, domain, URL, or email..."
+                placeholder="IP, domain, URL, or email..."
                 disabled={isRunning}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-700 bg-slate-800/60 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-colors"
+                className="w-full pl-8 pr-3 py-2 text-xs border border-slate-700 bg-slate-950 text-slate-200 placeholder:text-slate-600 outline-none focus:border-cyan-600 transition-colors font-mono"
               />
             </div>
+            {/* Module type selector */}
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value)}
+              disabled={isRunning}
+              className="px-2 py-2 text-xs border border-slate-700 bg-slate-950 text-slate-300 outline-none focus:border-cyan-600 transition-colors"
+            >
+              <option value="DNS Intel">DNS Intel</option>
+              <option value="Port Scan">Port Scan</option>
+              <option value="WHOIS">WHOIS</option>
+              <option value="SSL Analysis">SSL Analysis</option>
+              <option value="HTTP Security">HTTP Security</option>
+              <option value="Tech Stack">Tech Stack</option>
+              <option value="Cert Transparency">Cert Transparency</option>
+              <option value="Social Hunter">Social Hunter</option>
+              <option value="Deep Scraper">Deep Scraper</option>
+              <option value="Shodan Recon">Shodan Recon</option>
+              <option value="Censys Recon">Censys Recon</option>
+            </select>
             <div className="relative">
               <button
                 onClick={() => setDropdownOpen((v) => !v)}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 transition-colors border border-slate-700"
+                className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium border border-slate-700 hover:border-slate-600 transition-colors text-slate-300"
               >
                 <span className={currentIntensity.color}>{currentIntensity.label}</span>
               </button>
               {dropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 glass-panel rounded-xl py-1 min-w-[120px] z-50 animate-fade-in-up">
+                <div className="absolute top-full right-0 mt-1 border border-slate-700 bg-slate-900 py-1 min-w-[110px] z-50">
                   {INTENSITIES.map((i) => (
                     <button
                       key={i.value}
-                      onClick={() => {
-                        setIntensity(i.value);
-                        setDropdownOpen(false);
-                      }}
+                      onClick={() => { setIntensity(i.value); setDropdownOpen(false); }}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-xs font-medium hover:bg-white/5 transition-colors",
+                        "w-full text-left px-3 py-1.5 text-xs font-medium hover:bg-slate-800 transition-colors",
                         i.color,
-                        intensity === i.value && "bg-white/5"
+                        intensity === i.value && "bg-slate-800"
                       )}
                     >
                       {i.label}
@@ -192,10 +276,10 @@ export default function DashboardPage() {
               onClick={handleInvestigate}
               disabled={isRunning || !target.trim()}
               className={cn(
-                "px-6 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                "px-4 py-2 text-xs font-semibold transition-all border",
                 isRunning
-                  ? "bg-slate-800 text-slate-500 cursor-wait"
-                  : "bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white shadow-lg shadow-cyan-500/20"
+                  ? "border-slate-700 text-slate-600 bg-slate-900 cursor-wait"
+                  : "border-cyan-800 text-cyan-400 hover:bg-cyan-950 hover:border-cyan-700"
               )}
             >
               {isRunning ? "Running..." : "Investigate"}
@@ -204,97 +288,142 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
-            <div key={stat.label} className="glass-panel rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <stat.icon className={cn("w-5 h-5", stat.color)} />
-                <span className={cn("text-xs font-medium", stat.change.startsWith("+") ? "text-emerald-400" : "text-red-400")}>
-                  {stat.change}
-                </span>
-              </div>
-              <div className="text-2xl font-bold text-slate-100">{stat.value}</div>
-              <div className="text-xs text-slate-500 mt-1">{stat.label}</div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="border border-slate-800 bg-slate-900/60 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Server className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">Nodes</span>
             </div>
-          ))}
+            <div className="text-xl font-bold text-slate-100 font-mono">{graphStats.nodes}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5">entities in graph</div>
+          </div>
+          <div className="border border-slate-800 bg-slate-900/60 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Globe className="w-3.5 h-3.5 text-violet-400" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">Edges</span>
+            </div>
+            <div className="text-xl font-bold text-slate-100 font-mono">{graphStats.edges}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5">relationships</div>
+          </div>
+          <div className="border border-slate-800 bg-slate-900/60 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Activity className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">Scans</span>
+            </div>
+            <div className="text-xl font-bold text-slate-100 font-mono">{graphStats.nodes}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5">total entities</div>
+          </div>
+          <div className="border border-slate-800 bg-slate-900/60 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">Score</span>
+            </div>
+            <div className="text-xl font-bold text-slate-100 font-mono">{securityScore}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5">security posture</div>
+          </div>
         </div>
 
         {/* Recent Activity */}
-        <div className="glass-panel rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="border border-slate-800 bg-slate-900/60 p-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-sm font-semibold text-slate-200">Recent Activity</h2>
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Recent Tasks</h2>
             </div>
-            <button className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">View All</button>
-          </div>
-          <div className="space-y-2">
-            {RECENT_ACTIVITIES.map((activity) => (
-              <div
-                key={activity.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 hover:bg-slate-800/50 transition-colors"
+            {recentTasks.length > 0 && (
+              <button
+                onClick={() => setRecentTasks([])}
+                className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
               >
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(activity.status)}
-                  <div>
-                    <div className="text-sm font-medium text-slate-200">{activity.target}</div>
-                    <div className="text-xs text-slate-500">{activity.type}</div>
+                Clear
+              </button>
+            )}
+          </div>
+          {recentTasks.length === 0 ? (
+            <div className="text-xs text-slate-600 py-4 text-center font-mono">
+              No recent tasks — run an investigation to populate this list
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {recentTasks.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-center justify-between p-2 border border-slate-800/50 hover:border-slate-700/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {getStatusIcon(activity.status)}
+                    <div>
+                      <div className="text-xs font-medium text-slate-300 font-mono">{activity.target}</div>
+                      <div className="text-[10px] text-slate-600">{activity.type}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-xs text-slate-500">{activity.timestamp}</span>
-                  {activity.riskScore !== undefined && (
-                    <div className="flex items-center gap-2">
-                      <Shield className="w-3.5 h-3.5 text-slate-500" />
-                      <span className={cn("text-xs font-medium", getRiskColor(activity.riskScore))}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] text-slate-600">{activity.timestamp}</span>
+                    {activity.riskScore !== undefined && (
+                      <span className={cn("text-[10px] font-mono font-medium", getRiskColor(activity.riskScore))}>
                         {(activity.riskScore * 100).toFixed(0)}%
                       </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Risk Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="glass-panel rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-sm font-semibold text-slate-200">Risk Distribution</h2>
-            </div>
-            <div className="space-y-3">
-              {[
-                { label: "Critical", count: 12, color: "bg-red-500", pct: "15%" },
-                { label: "High", count: 45, color: "bg-amber-500", pct: "35%" },
-                { label: "Medium", count: 89, color: "bg-cyan-500", pct: "45%" },
-                { label: "Low", count: 156, color: "bg-emerald-500", pct: "70%" },
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-slate-400">{item.label}</span>
-                    <span className="text-slate-300">{item.count} entities</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                    <div className={cn("h-full rounded-full", item.color)} style={{ width: item.pct }} />
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* Bottom Row: Risk Distribution + System Status */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-3.5 h-3.5 text-cyan-400" />
+              <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Risk Distribution</h2>
+            </div>
+            {graphStats.nodes === 0 ? (
+              <div className="text-xs text-slate-600 py-2 font-mono">
+                No risk data available — graph is empty
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {[
+                  { label: "Critical", count: criticalCount, color: "bg-red-500", pct: graphStats.nodes > 0 ? `${Math.round((criticalCount / graphStats.nodes) * 100)}%` : "0%" },
+                  { label: "High", count: highCount, color: "bg-amber-500", pct: graphStats.nodes > 0 ? `${Math.round((highCount / graphStats.nodes) * 100)}%` : "0%" },
+                  { label: "Medium", count: mediumCount, color: "bg-cyan-500", pct: graphStats.nodes > 0 ? `${Math.round((mediumCount / graphStats.nodes) * 100)}%` : "0%" },
+                  { label: "Low", count: lowCount, color: "bg-emerald-500", pct: graphStats.nodes > 0 ? `${Math.round((lowCount / graphStats.nodes) * 100)}%` : "0%" },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div className="flex items-center justify-between text-[10px] mb-1">
+                      <span className="text-slate-400 uppercase tracking-wider">{item.label}</span>
+                      <span className="text-slate-500 font-mono">{item.count} entities</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-800 overflow-hidden">
+                      <div className={cn("h-full", item.color)} style={{ width: item.pct }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="glass-panel rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-sm font-semibold text-slate-200">Security Posture</h2>
+          <div className="border border-slate-800 bg-slate-900/60 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Lock className="w-3.5 h-3.5 text-cyan-400" />
+              <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">System Status</h2>
             </div>
-            <div className="flex items-center justify-center h-32">
-              <div className="text-center">
-                <div className="text-4xl font-bold text-emerald-400">72</div>
-                <div className="text-xs text-slate-500 mt-1">Overall Security Score</div>
-                <div className="text-xs text-emerald-400 mt-2">+8 from last week</div>
-              </div>
+            <div className="space-y-2">
+              {[
+                { label: "Neo4j", status: graphStats.nodes >= 0 ? "connected" : "disconnected", ok: true },
+                { label: "Redis", status: "connected", ok: true },
+                { label: "Celery Worker", status: isRunning ? "active" : "idle", ok: true },
+                { label: "API Gateway", status: "operational", ok: true },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between text-[10px]">
+                  <span className="text-slate-500">{item.label}</span>
+                  <div className="flex items-center gap-1">
+                    <div className={cn("w-1.5 h-1.5 rounded-full", item.ok ? "bg-emerald-400" : "bg-red-400")} />
+                    <span className="text-slate-400 font-mono">{item.status}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
