@@ -1,107 +1,147 @@
-# Unified Enterprise OSINT Platform
+# OSINT Digital Footprint Visualizer
 
-A distributed, polyglot Open Source Intelligence (OSINT) platform with multi-agent orchestration, vector search, and STIX 2.1 compliance. Built for enterprise threat intelligence and digital footprint analysis.
+A distributed, polyglot Open Source Intelligence platform with multi-agent orchestration, vector semantic search, and STIX 2.1 compliance. Built for enterprise threat intelligence and digital footprint analysis.
 
-## Overview
+---
 
-- **Isolation-and-wrapper methodology**: FastAPI dispatches work to Celery; OSINT logic runs in isolated subprocesses with hard timeouts.
-- **Polyglot persistence**: Redis (broker + pub/sub), Neo4j (STIX graph), Weaviate (semantic search), PostgreSQL (planned).
-- **LangGraph multi-agent**: Searcher, Analyzer, Pentester, and Orchestrator agents with checkpoint memory and zero-trust scoped tools.
-
-## Prerequisites
-
-- **Python 3.10+**
-- **Node.js 18+**
-- **Docker & Docker Compose** (for Redis, RabbitMQ, Neo4j, Weaviate, PostgreSQL)
-
-## Quick Start
-
-### 1. Clone and configure
+## Zero-Config Quick Start (No API Keys Required)
 
 ```bash
+# 1. Clone and start all infrastructure
 git clone <repo-url>
 cd OSINT-Digital-Footprint-Visualizer
-cp .env.example .env
-# Edit .env with API keys (Shodan, Censys) if needed
-```
-
-### 2. Start infrastructure
-
-```bash
-docker compose up -d
-```
-
-### 3. Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-### 4. Unified Verification & Orchestrator
-
-From the project root:
-
-```bash
-cp .env.example .env
 docker compose up -d
 
-cd backend && pip install -r requirements.txt
-cd ..
+# 2. Install backend dependencies
+cd backend && pip install -r requirements.txt && cd ..
 
-# 1) Verify infra, seed DB, and run a dry-run E2E
-python verify.py
-
-# 2) Start backend (FastAPI), Celery worker, and frontend together
+# 3. Launch everything — backend, Celery worker, and frontend
 python main.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open **[http://localhost:3000](http://localhost:3000)** — you are live.
 
-## Environment Variables
+> **No API keys needed.** The platform runs fully keyless. Shodan and Censys are optional enhancements — every core module (DNS intel, WHOIS, SSL analysis, social hunting, subdomain discovery, deep scraping, port scanning, etc.) works without any credentials.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `CELERY_BROKER_URL` | Redis URL for Celery | `redis://localhost:6379/0` |
-| `REDIS_URL` | Redis for pub/sub | Same as broker |
-| `CELERY_TASK_HARD_TIMEOUT` | Seconds before SIGKILL | `300` |
-| `VAULT_SHODAN_API_KEY` | Shodan API key | - |
-| `VAULT_CENSYS_API_ID` | Censys API ID | - |
-| `VAULT_CENSYS_API_SECRET` | Censys API secret | - |
-| `NEO4J_URI` | Neo4j HTTP URI | `http://localhost:7474` |
-| `NEO4J_USER` | Neo4j user | `neo4j` |
-| `NEO4J_PASSWORD` | Neo4j password | - |
-| `WEAVIATE_HTTP_URI` | Weaviate HTTP URL | `http://localhost:8080` |
-| `NEXT_PUBLIC_API_URL` | Backend API URL (frontend) | `http://localhost:8000` |
+---
 
-## Docker Services
+## Prerequisites
 
-| Service | Ports |
-|---------|-------|
-| Redis | 6379 |
-| RabbitMQ | 5672 (AMQP), 15672 (Mgmt) |
-| Neo4j | 7474 (HTTP), 7687 (Bolt) |
-| Weaviate | 8080, 50051 |
-| PostgreSQL | 5432 |
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Python | 3.10+ | Backend |
+| Node.js | 18+ | Frontend |
+| Docker & Docker Compose | Latest | Infrastructure services |
+
+---
+
+## Infrastructure Services
+
+All started via `docker compose up -d`:
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Redis | 6379 | Celery broker + pub/sub |
+| RabbitMQ | 5672, 15672 | Enterprise event bus |
+| Neo4j | 7474, 7687 | STIX 2.1 graph database |
+| Weaviate | 8080 | Vector semantic search |
+| PostgreSQL | 5432 | Audit logs, configs |
+
+---
 
 ## Project Structure
 
 ```
-├── backend/          # FastAPI, Celery, modules, agents
-├── frontend/         # Next.js 15, React 18, Tailwind
-├── docker-compose.yml
-├── .env.example
-├── README.md
-├── ARCHITECTURE.md
-└── API_DOCS.md
+backend/
+├── api.py               # FastAPI — all REST + WebSocket endpoints
+├── celery_app.py        # Celery worker configuration
+├── tasks.py             # 15 async OSINT task definitions
+├── stix_pipeline.py     # STIX 2.1 bundle builder
+├── reporting_engine.py  # Report generators (Markdown, JSON, CSV)
+├── neo4j_client.py      # Neo4j STIX ingestion + graph export
+├── agents/              # LangGraph multi-agent (Searcher, Analyzer, Pentester)
+└── modules/             # 15 individual OSINT modules
+
+frontend/
+└── src/app/
+    ├── dashboard/        # Investigation launcher
+    ├── tools/            # OSINT module grid
+    ├── workspace/        # Full-screen STIX graph (Cytoscape.js)
+    └── reports/          # Report generation and export
+
+docker-compose.yml        # Redis, RabbitMQ, Neo4j, Weaviate, PostgreSQL
+main.py                   # Master orchestrator (starts all 3 services)
+.env.example              # All environment variables
 ```
+
+---
+
+## Optional API Keys
+
+Most modules are fully keyless. Add keys for enhanced results:
+
+| Service | Env Variable | Purpose |
+|---------|-------------|---------|
+| Shodan | `VAULT_SHODAN_API_KEY` | Host enrichment, banner data |
+| Censys | `VAULT_CENSYS_API_ID` / `VAULT_CENSYS_API_SECRET` | Certificate enrichment |
+
+Without keys, both modules fall back to public data sources seamlessly.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis for Celery |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis for pub/sub |
+| `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt URI |
+| `NEO4J_USER` | `neo4j` | Neo4j username |
+| `NEO4J_PASSWORD` | `dev_neo4j_secret` | Neo4j password |
+| `WEAVIATE_HTTP_URI` | `http://localhost:8080` | Weaviate URL |
+| `RABBITMQ_URL` | `amqp://admin:dev_rabbitmq_secret@localhost:5672/` | RabbitMQ AMQP |
+| `POSTGRES_DB` | `osint_platform` | PostgreSQL database |
+| `CELERY_TASK_HARD_TIMEOUT` | `300` | Seconds before task SIGKILL |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Frontend → API URL |
+
+---
+
+## Available OSINT Modules (All Keyless by Default)
+
+| Module | Description |
+|--------|-------------|
+| **DNS Intel** | A/AAAA/MX/NS/TXT records, subdomain brute-forcing |
+| **WHOIS Lookup** | Domain registration and registrant data |
+| **SSL Analyzer** | TLS certificate chain and cipher analysis |
+| **HTTP Security** | Security headers audit (HSTS, CSP, etc.) |
+| **Technology Stack** | Wappalyzer-style fingerprinting |
+| **Port Scanner** | Concurrent TCP SYN scan |
+| **Social Hunter** | Username enumeration across 50+ platforms |
+| **Cert Transparency** | Subdomain discovery via crt.sh CT logs |
+| **Deep Scraper** | Recursive crawler: emails, phones, links, docs |
+| **Metadata Extractor** | PDF/image/document metadata |
+| **Shodan Recon** | Host data, banners, CVEs (key optional) |
+| **Censys Recon** | Certificate and host enrichment (key optional) |
+| **GraySentinel** | Scrape → chunk → NER → embed → Weaviate |
+| **CyberNinja** | Passive username/email enumeration |
+| **xRecon** | Cross-engine username and email lookup |
+
+---
+
+## STIX 2.1 Compliance
+
+Every module result is automatically converted into a STIX 2.1 bundle and ingested into Neo4j, producing a live threat-intelligence graph. Fetch the graph at `GET /api/graph`.
+
+---
 
 ## Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) – Technical architecture and data flow
-- [API_DOCS.md](./API_DOCS.md) – REST and WebSocket API reference
-- [context.md](./context.md) – Project context and status
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — Technical architecture and data flow
+- [API_DOCS.md](./API_DOCS.md) — REST and WebSocket API reference
+- [context.md](./context.md) — Project context and status
+
+---
 
 ## License
 
-Proprietary / See repository.
+See repository.

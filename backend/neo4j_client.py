@@ -74,7 +74,12 @@ def _merge_object(tx, obj: Dict[str, Any]) -> None:
     obj_type = obj.get("type")
     if not obj_id or not obj_type:
         return
-    props = {k: v for k, v in obj.items() if k not in {"id", "type"}}
+
+    # Separate STIX properties from relationship fields
+    relationship_fields = {"source_ref", "target_ref", "relationship_type", "created", "modified"}
+    props = {k: v for k, v in obj.items() if k not in {"id", "type"} and k not in relationship_fields}
+
+    # Merge the node itself
     tx.run(
         """
         MERGE (n:Stix {id: $id})
@@ -85,4 +90,22 @@ def _merge_object(tx, obj: Dict[str, Any]) -> None:
         type=obj_type,
         props=props,
     )
+
+    # If this is a relationship object, create the directed edge
+    if obj_type == "relationship":
+        src = obj.get("source_ref")
+        tgt = obj.get("target_ref")
+        rel_type = obj.get("relationship_type", "related-to")
+        if src and tgt:
+            tx.run(
+                """
+                MATCH (a:Stix {id: $src}), (b:Stix {id: $tgt})
+                MERGE (a)-[r:`RELTYPE:` + $rel_type]->(b)
+                SET r.id = $rel_id
+                """,
+                src=src,
+                tgt=tgt,
+                rel_type=rel_type.replace("-", "_"),
+                rel_id=obj_id,
+            )
 

@@ -138,6 +138,21 @@ def _spawn_and_stream(
     return result
 
 
+def _ingest_stix_bundle(module_name: str, result: dict) -> None:
+    """Convert module result to STIX bundle and ingest into Neo4j silently."""
+    try:
+        from backend.stix_pipeline import build_stix_bundle
+        from backend.neo4j_client import Neo4jClient
+
+        bundle = build_stix_bundle(module_name, result)
+        if bundle:
+            client = Neo4jClient()
+            client.ingest_bundle(bundle)
+            client.close()
+    except Exception:
+        pass  # Non-fatal: Neo4j is best-effort enrichment
+
+
 def _run_module_subprocess(
     module_name: str,
     payload: dict,
@@ -146,6 +161,7 @@ def _run_module_subprocess(
 ) -> dict:
     """
     Optionally create a temporary config for sensitive modules, then spawn and stream.
+    After a successful result, ingest STIX bundle into Neo4j.
     """
     service = MODULE_SECRET_SERVICE.get(module_name)
     if service:
@@ -154,8 +170,15 @@ def _run_module_subprocess(
                 "OSINT_CONFIG_FILE": config_path,
                 "OSINT_SERVICE": service,
             }
-            return _spawn_and_stream(module_name, payload, task_id, redis_client, extra_env)
-    return _spawn_and_stream(module_name, payload, task_id, redis_client)
+            result = _spawn_and_stream(module_name, payload, task_id, redis_client, extra_env)
+    else:
+        result = _spawn_and_stream(module_name, payload, task_id, redis_client)
+
+    # Best-effort STIX enrichment — don't fail the task if Neo4j is unavailable
+    if result and result.get("success") and not result.get("error"):
+        _ingest_stix_bundle(module_name, result)
+
+    return result
 
 
 @celery_app.task(

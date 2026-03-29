@@ -151,9 +151,9 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
             "dockerhub": "docker-hub", "keybase": "keybase", "telegram": "telegram",
             "discord": "discord", "mastodon": "mastodon", "bluesky": "bluesky",
             "devto": "devto", "replit": "replit", "stackoverflow": "stackoverflow",
-            "keybase": "keybase", "patreon": "patreon", "snapchat": "snapchat",
-            "soundcloud": "soundcloud", "spotify": "spotify", "steam": "steam",
-            "tiktok": "tiktok", "venmo": "venmo", "cashapp": "cashapp",
+            "patreon": "patreon", "snapchat": "snapchat",
+            "soundcloud": "soundcloud", "spotify": "spotify",
+            "venmo": "venmo", "cashapp": "cashapp",
         }
 
         found_accounts: List[Dict[str, Any]] = []

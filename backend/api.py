@@ -22,6 +22,13 @@ from backend.tasks import (
     task_graysentinel_ingest, task_cyberninja_passive, task_xrecon,
     task_social_hunter, task_cert_transparency, task_deep_scraper,
 )
+from backend.reporting_engine import (
+    generate_executive_summary,
+    generate_technical_report,
+    generate_stix_bundle,
+    generate_raw_data,
+    generate_ioc_csv,
+)
 
 
 def _log_audit(tenant_id: Optional[str], action: str, target: Optional[str] = None, status: str = "initiated") -> None:
@@ -499,6 +506,78 @@ def api_agent_investigate(req: AgentInvestigateRequest, x_tenant_id: Optional[st
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+class ReportRequest(BaseModel):
+    format: str = "markdown"
+
+
+@app.get("/api/reports")
+def list_reports():
+    """Available report types."""
+    return {
+        "reports": [
+            {"id": "executive-summary", "name": "Executive Summary", "format": "markdown"},
+            {"id": "technical-report", "name": "Technical Report", "format": "markdown"},
+            {"id": "stix-bundle", "name": "STIX 2.1 Bundle", "format": "json"},
+            {"id": "raw-data", "name": "Raw Data Export", "format": "json"},
+            {"id": "ioc-list", "name": "IOC List", "format": "csv"},
+        ]
+    }
+
+
+@app.get("/api/reports/{report_type}")
+def get_report(report_type: str):
+    """
+    Generate a report of the given type and return it.
+    Supported types: executive-summary, technical-report, stix-bundle, raw-data, ioc-list
+    """
+    if report_type == "executive-summary":
+        content = generate_executive_summary()
+        return {
+            "success": True,
+            "report_type": report_type,
+            "format": "markdown",
+            "content": content,
+        }
+    elif report_type == "technical-report":
+        content = generate_technical_report()
+        return {
+            "success": True,
+            "report_type": report_type,
+            "format": "markdown",
+            "content": content,
+        }
+    elif report_type == "stix-bundle":
+        bundle = generate_stix_bundle()
+        return {
+            "success": True,
+            "report_type": report_type,
+            "format": "json",
+            "content": bundle,
+        }
+    elif report_type == "raw-data":
+        data = generate_raw_data()
+        return {
+            "success": True,
+            "report_type": report_type,
+            "format": "json",
+            "content": data,
+        }
+    elif report_type == "ioc-list":
+        csv_content = generate_ioc_csv()
+        return {
+            "success": True,
+            "report_type": report_type,
+            "format": "csv",
+            "content": csv_content,
+        }
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown report type: {report_type}. "
+                   f"Valid types: executive-summary, technical-report, stix-bundle, raw-data, ioc-list",
+        )
 
 
 @app.get("/api/graph")
