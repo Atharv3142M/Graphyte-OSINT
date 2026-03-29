@@ -20,6 +20,7 @@ from backend.tasks import (
     task_dns_intel, task_whois_lookup, task_ssl_analyze,
     task_http_security, task_tech_stack, task_metadata_extract,
     task_graysentinel_ingest, task_cyberninja_passive, task_xrecon,
+    task_social_hunter, task_cert_transparency, task_deep_scraper,
 )
 
 
@@ -176,6 +177,23 @@ class CyberNinjaRequest(BaseModel):
 class XReconRequest(BaseModel):
     query: str
     query_type: str = "username"
+
+
+class SocialHunterRequest(BaseModel):
+    username: str
+    max_concurrent: int = 20
+
+
+class CertTransparencyRequest(BaseModel):
+    domain: str
+    use_html_fallback: bool = True
+
+
+class DeepScraperRequest(BaseModel):
+    url: str
+    max_depth: int = 2
+    max_pages: int = 50
+    max_concurrent: int = 10
 
 
 class IngestRequest(BaseModel):
@@ -358,6 +376,56 @@ def api_xrecon(req: XReconRequest, x_tenant_id: Optional[str] = Header(None, ali
     _log_audit(x_tenant_id, "xrecon", req.query[:100], "initiated")
     _publish_event("osint.investigation.started", {"action": "xrecon", "target": req.query[:100]})
     t = task_xrecon.delay(req.query, req.query_type)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/social-hunter")
+def api_social_hunter(req: SocialHunterRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    Hunt for a username across 50+ social media platforms.
+    Keyless/passive - uses HTTP status code checks only.
+    """
+    _log_audit(x_tenant_id, "social_hunter", req.username, "initiated")
+    _publish_event("osint.investigation.started", {"action": "social_hunter", "target": req.username})
+    t = task_social_hunter.delay(req.username, req.max_concurrent)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/cert-transparency")
+def api_cert_transparency(req: CertTransparencyRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    Discover subdomains via Certificate Transparency logs (crt.sh).
+    Keyless/passive - scrapes public CT logs, no API key required.
+    """
+    _log_audit(x_tenant_id, "cert_transparency", req.domain, "initiated")
+    _publish_event("osint.investigation.started", {"action": "cert_transparency", "target": req.domain})
+    t = task_cert_transparency.delay(req.domain, req.use_html_fallback)
+    return {
+        "task_id": t.id,
+        "status": "queued",
+        "stream_url": f"/ws/task/{t.id}",
+        "result_url": f"/api/tasks/{t.id}",
+    }
+
+
+@app.post("/api/deep-scraper")
+def api_deep_scraper(req: DeepScraperRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    Deep recursive scraper extracting emails, phones, links, documents, and social profiles.
+    """
+    _log_audit(x_tenant_id, "deep_scraper", req.url[:200], "initiated")
+    _publish_event("osint.investigation.started", {"action": "deep_scraper", "target": req.url[:200]})
+    t = task_deep_scraper.delay(req.url, req.max_depth, req.max_pages, req.max_concurrent)
     return {
         "task_id": t.id,
         "status": "queued",

@@ -15,6 +15,9 @@ from .tech_stack import detect_tech_stack
 from .metadata_extractor import extract_metadata
 from .graysentinel_pipeline import run_pipeline
 from .xrecon import xrecon_search
+from .social_hunter import social_hunter
+from .cert_transparency import cert_transparency
+from .deep_scraper import deep_scraper
 
 __all__ = [
     "shodan_search",
@@ -30,4 +33,7 @@ __all__ = [
     "extract_metadata",
     "run_pipeline",
     "xrecon_search",
+    "social_hunter",
+    "cert_transparency",
+    "deep_scraper",
 ]

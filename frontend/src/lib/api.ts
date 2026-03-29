@@ -87,7 +87,10 @@ export type ModuleEndpoint =
   | "/api/tech-stack"
   | "/api/metadata-extract"
   | "/api/cyberninja"
-  | "/api/xrecon";
+  | "/api/xrecon"
+  | "/api/social-hunter"
+  | "/api/cert-transparency"
+  | "/api/deep-scraper";
 
 export async function runModule(
   endpoint: ModuleEndpoint,

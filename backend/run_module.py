@@ -135,6 +135,26 @@ def main() -> None:
     elif module_name == "metadata_extractor":
         from backend.modules.metadata_extractor import extract_metadata
         result = extract_metadata(payload.get("file_path", ""))
+    elif module_name == "social_hunter":
+        from backend.modules.social_hunter import social_hunter
+        result = social_hunter(
+            payload.get("username", ""),
+            max_concurrent=payload.get("max_concurrent", 20),
+        )
+    elif module_name == "cert_transparency":
+        from backend.modules.cert_transparency import cert_transparency
+        result = cert_transparency(
+            payload.get("domain", ""),
+            use_html_fallback=payload.get("use_html_fallback", True),
+        )
+    elif module_name == "deep_scraper":
+        from backend.modules.deep_scraper import deep_scraper
+        result = deep_scraper(
+            payload.get("url", ""),
+            max_depth=payload.get("max_depth", 2),
+            max_pages=payload.get("max_pages", 50),
+            max_concurrent=payload.get("max_concurrent", 10),
+        )
     else:
         result = {"error": f"Unknown module: {module_name}"}
 

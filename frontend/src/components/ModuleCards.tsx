@@ -11,6 +11,9 @@ import {
   Loader2,
   CheckCircle,
   AlertTriangle,
+  Network,
+  ScanSearch,
+  AtSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { runModule, WS_BASE, type ModuleEndpoint } from "@/lib/api";
@@ -45,6 +48,38 @@ const MODULES: ModuleDef[] = [
     fields: [
       { name: "domain", label: "Domain", placeholder: "example.com", type: "text", required: true },
       { name: "brute_subdomains", label: "Brute-force subdomains", placeholder: "", type: "checkbox", defaultValue: false },
+    ],
+  },
+  {
+    id: "cert-transparency",
+    label: "Certificate Transparency",
+    description: "Discover subdomains via crt.sh CT logs — no API key required. Finds 100s of subdomains passively.",
+    icon: Network,
+    endpoint: "/api/cert-transparency",
+    fields: [
+      { name: "domain", label: "Domain", placeholder: "example.com", type: "text", required: true },
+    ],
+  },
+  {
+    id: "social-hunter",
+    label: "Social Media Hunter",
+    description: "Check 50+ platforms (Twitter, GitHub, Reddit, etc.) for a given username. Keyless enumeration.",
+    icon: AtSign,
+    endpoint: "/api/social-hunter",
+    fields: [
+      { name: "username", label: "Username", placeholder: "johndoe", type: "text", required: true },
+    ],
+  },
+  {
+    id: "deep-scraper",
+    label: "Deep Web Scraper",
+    description: "Recursive scraping extracting emails, phones, links, documents (PDF/DOCX), and social profiles.",
+    icon: ScanSearch,
+    endpoint: "/api/deep-scraper",
+    fields: [
+      { name: "url", label: "URL", placeholder: "https://example.com", type: "text", required: true },
+      { name: "max_depth", label: "Crawl Depth", placeholder: "2", type: "number", defaultValue: 2 },
+      { name: "max_pages", label: "Max Pages", placeholder: "50", type: "number", defaultValue: 50 },
     ],
   },
   {

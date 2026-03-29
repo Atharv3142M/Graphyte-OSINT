@@ -323,3 +323,61 @@ def task_xrecon(self, query: str, query_type: str = "username"):
     payload = {"query": query, "query_type": query_type}
     redis_client = _get_redis()
     return _run_module_subprocess("xrecon", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.social_hunter",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_social_hunter(self, username: str, max_concurrent: int = 20):
+    """
+    Hunt for a username across 50+ social media platforms.
+    Keyless/passive - uses HTTP status code checks only.
+    """
+    payload = {"username": username, "max_concurrent": max_concurrent}
+    redis_client = _get_redis()
+    return _run_module_subprocess("social_hunter", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.cert_transparency",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_cert_transparency(self, domain: str, use_html_fallback: bool = True):
+    """
+    Discover subdomains via Certificate Transparency logs (crt.sh).
+    Keyless/passive - scrapes public CT logs.
+    """
+    payload = {"domain": domain, "use_html_fallback": use_html_fallback}
+    redis_client = _get_redis()
+    return _run_module_subprocess("cert_transparency", payload, self.request.id, redis_client)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.deep_scraper",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_deep_scraper(
+    self,
+    url: str,
+    max_depth: int = 2,
+    max_pages: int = 50,
+    max_concurrent: int = 10,
+):
+    """
+    Deep recursive scraper extracting emails, phones, links, documents, and social profiles.
+    """
+    payload = {
+        "url": url,
+        "max_depth": max_depth,
+        "max_pages": max_pages,
+        "max_concurrent": max_concurrent,
+    }
+    redis_client = _get_redis()
+    return _run_module_subprocess("deep_scraper", payload, self.request.id, redis_client)
