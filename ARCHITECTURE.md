@@ -111,3 +111,68 @@ All agent tools import from `backend/modules/` or top-level backend modules:
 - `searcher_tools` → modules.shodan_recon, censys_recon, scraper, xrecon
 - `analyzer_tools` → semantic_search, modules.graysentinel_pipeline
 - `pentester_tools` → modules.port_scanner, modules.cyberninja_passive
+
+## 6. Frontend Architecture (Phase 4)
+
+### State Management — Zustand
+
+All global investigation state lives in `frontend/src/store/useInvestigationStore.ts` (Zustand store). The store is the single source of truth for:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `currentTaskId` | `string \| null` | Active Celery task ID |
+| `investigationStatus` | `InvestigationStatus` | `idle \| queued \| running \| done \| error` |
+| `threadId` | `string \| null` | LangGraph thread (for agent mode) |
+| `threatScore` | `number \| null` | Agent-assessed threat score |
+| `orchestratorSummary` | `string \| null` | Agent synthesis summary |
+| `streamLog` | `string[]` | Live terminal lines (ANSI-escaped) |
+| `graphData` | `GraphData \| null` | STIX 2.1 nodes + edges from `GET /api/graph` |
+| `selectedNode` | `NodeDetail \| null` | Currently selected graph node |
+| `detailPanelOpen` | `boolean` | Node detail panel visibility |
+| `pruneLeaves` | `boolean` | Graph prune toggle state |
+
+### Centralized API Client
+
+`frontend/src/lib/api.ts` provides a single typed interface to the backend:
+
+- `investigate(goal, threadId?)` — POST `/api/agent/investigate` (LangGraph)
+- `runModule(endpoint, body)` — POST to any `/api/*` Celery endpoint
+- `fetchGraph()` — GET `/api/graph` → `GraphData`
+- `getTaskStatus(taskId)` — GET `/api/tasks/{task_id}`
+- `createTaskStream(taskId, onMessage, onDone, onError)` — WebSocket at `/ws/task/{task_id}`
+
+All requests include the `X-Tenant-ID` header automatically.
+
+### Data Flow: Investigation Pipeline
+
+```
+Omnibar (handleInvestigate)
+  ├─ Agent mode:
+  │   POST /api/agent/investigate
+  │   → wait for response (synchronous LangGraph)
+  │   → extract thread_id, threat_score, summary
+  │   → GET /api/graph (refreshGraph)
+  │
+  └─ Celery mode (low/standard/aggressive):
+      POST /api/{shodan,port-scan,...}
+      → extract task_id
+      → WebSocket /ws/task/{task_id}
+          → stream stdout/stderr lines → appendLog
+          → {"type": "done"} → setStatus("done") → refreshGraph
+```
+
+### STIX Graph Rendering
+
+`GraphCanvas` uses Cytoscape 3 to render the graph:
+- Loads from `store.graphData` (live) or `GET /api/graph` (fallback)
+- Node type → color mapping via `TYPE_COLORS` (cyan=default, green=ipv4, purple=domain, amber=network-traffic, pink=note, red=server)
+- Tap node → `openDetailPanel(node)` → right panel slides in
+- Tap background → `closeDetailPanel()`
+- Prune toggle removes degree ≤ 1 nodes (leaves)
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend HTTP base |
+| `NEXT_PUBLIC_DEFAULT_TENANT_ID` | `aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee` | Multi-tenant header value |

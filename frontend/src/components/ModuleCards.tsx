@@ -13,10 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const DEFAULT_TENANT_ID =
-  process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID || "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+import { runModule, WS_BASE, type ModuleEndpoint } from "@/lib/api";
 
 /* ── Module definitions ─────────────────────────────────────────── */
 
@@ -157,20 +154,7 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
           body[f.name] = f.type === "number" ? Number(values[f.name]) : values[f.name];
         }
 
-        const res = await fetch(`${API_BASE}${mod.endpoint}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Tenant-ID": DEFAULT_TENANT_ID,
-          },
-          body: JSON.stringify(body),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.detail || `HTTP ${res.status}`);
-        }
+        const data = await runModule(mod.endpoint as ModuleEndpoint, body);
 
         const taskId = data.task_id;
 
@@ -180,7 +164,7 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
         }));
 
         onStreamLog?.(
-          `\x1b[36m[${mod.label}] Task queued → ${taskId ?? "immediate"}\x1b[0m`
+          `\x1b[36m[${mod.label}]\x1b[0m Queued → ${taskId ?? "immediate"} \x1b[90m${WS_BASE}/ws/task/${taskId}\x1b[0m`
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -188,7 +172,7 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
           ...prev,
           [mod.id]: { ...prev[mod.id], status: "error", error: msg },
         }));
-        onStreamLog?.(`\x1b[31m[${mod.label}] Error: ${msg}\x1b[0m`);
+        onStreamLog?.(`\x1b[31m[${mod.label}]\x1b[0m ${msg}`);
       }
     },
     [cards, onStreamLog]

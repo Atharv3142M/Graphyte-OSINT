@@ -12,3 +12,8 @@ backend/**/__pycache__
 /reference-repos
 EXECUTION_PLAN.md
 CLAUDE.md
+/.claude
+/.claude
+/.claude
+.claude/settings.local.json
+.claude/settings.json

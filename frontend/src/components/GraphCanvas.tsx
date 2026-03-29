@@ -2,22 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import cytoscape, { Core, NodeSingular } from "cytoscape";
-import { ZoomIn, ZoomOut, Maximize2, Layers, AlertTriangle, DatabaseOff } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Layers, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NodeDetail } from "./NodeDetailPanel";
-import { getMockGraphElements } from "@/lib/mock-data";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+import { fetchGraph } from "@/lib/api";
+import { useInvestigationStore } from "@/store/useInvestigationStore";
 
 /* ── Color map for node types ──────────────────────────── */
 const TYPE_COLORS: Record<string, { bg: string; border: string; glow: string }> = {
   default:          { bg: "#06b6d4", border: "#22d3ee", glow: "rgba(6,182,212,0.35)" },
   ipv4_addr:        { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
+  "ipv4-addr":      { bg: "#22c55e", border: "#4ade80", glow: "rgba(34,197,94,0.35)" },
   domain_name:      { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
+  "domain":         { bg: "#8b5cf6", border: "#a78bfa", glow: "rgba(139,92,246,0.35)" },
   network_traffic:  { bg: "#f59e0b", border: "#fbbf24", glow: "rgba(245,158,11,0.35)" },
   note:             { bg: "#ec4899", border: "#f472b6", glow: "rgba(236,72,153,0.35)" },
   server:           { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
+  url:              { bg: "#14b8a6", border: "#2dd4bf", glow: "rgba(20,184,166,0.35)" },
+  file:             { bg: "#f97316", border: "#fb923c", glow: "rgba(249,115,22,0.35)" },
+  email_addr:       { bg: "#a855f7", border: "#c084fc", glow: "rgba(168,85,247,0.35)" },
+  vulnerability:    { bg: "#ef4444", border: "#fca5a5", glow: "rgba(239,68,68,0.45)" },
 };
 
 interface GraphCanvasProps {
@@ -43,6 +47,9 @@ export function GraphCanvas({
   const [error, setError] = useState<string | null>(null);
   const [layoutType, setLayoutType] = useState<"cose" | "circle">("cose");
 
+  const graphData = useInvestigationStore((s) => s.graphData);
+  const setGraphData = useInvestigationStore((s) => s.setGraphData);
+
   const runLayout = useCallback(() => {
     if (cyRef.current) {
       cyRef.current.layout({ name: layoutType, animate: true, animationDuration: 400 }).run();
@@ -53,56 +60,59 @@ export function GraphCanvas({
     if (!loading && cyRef.current) runLayout();
   }, [layoutType, loading, runLayout]);
 
+  /* ── Load graph from backend ─────────────────────── */
   const loadGraph = useCallback(async () => {
     if (!containerRef.current) return;
     setLoading(true);
     setError(null);
     try {
       let data;
-      let usingMock = false;
 
-      if (USE_MOCK_DATA) {
-        data = await getMockGraphElements();
-        usingMock = true;
+      /* Prefer live store data if present */
+      if (graphData && graphData.nodes.length > 0) {
+        data = graphData;
       } else {
-        const res = await fetch(`${API_BASE}/api/graph`);
-        if (!res.ok) {
-          // Fallback to mock data if backend unavailable
-          data = await getMockGraphElements();
-          usingMock = true;
-        } else {
-          data = await res.json();
-        }
+        data = await fetchGraph();
+        setGraphData(data);
       }
 
-      const elements = data.elements || { nodes: [], edges: [] };
+      /* Backend returns { elements: { nodes, edges } } — unwrap */
+      const elements = "elements" in data
+        ? (data as { elements: { nodes: unknown[]; edges: unknown[] } }).elements
+        : data as { nodes: unknown[]; edges: unknown[] };
       let nodes = elements.nodes || [];
       let edges = elements.edges || [];
 
+      /* Prune leaf nodes (degree ≤ 1) on demand */
       if (pruneLeaves && nodes.length > 0) {
-        const nodeIds = new Set<string>(nodes.map((n: { data: { id: string } }) => n.data.id));
+        const nodeIds = new Set<string>(
+          (nodes as { data: { id: string } }[]).map((n) => n.data.id)
+        );
         const degree = new Map<string, number>();
         nodeIds.forEach((id: string) => degree.set(id, 0));
-        edges.forEach((e: { data: { source: string; target: string } }) => {
+        (edges as { data: { source: string; target: string } }[]).forEach((e) => {
           degree.set(e.data.source, (degree.get(e.data.source) || 0) + 1);
           degree.set(e.data.target, (degree.get(e.data.target) || 0) + 1);
         });
-        const leafIds = new Set([...nodeIds].filter((id) => (degree.get(id) || 0) <= 1));
-        const keepIds = new Set([...nodeIds].filter((id) => !leafIds.has(id)));
-        nodes = nodes.filter((n: { data: { id: string } }) => keepIds.has(n.data.id));
-        edges = edges.filter(
-          (e: { data: { source: string; target: string } }) =>
-            keepIds.has(e.data.source) && keepIds.has(e.data.target)
+        const keepIds = new Set(
+          [...nodeIds].filter((id) => (degree.get(id) || 0) > 1)
+        );
+        nodes = (nodes as { data: { id: string } }[]).filter((n) =>
+          keepIds.has(n.data.id)
+        );
+        edges = (edges as { data: { source: string; target: string } }[]).filter(
+          (e) => keepIds.has(e.data.source) && keepIds.has(e.data.target)
         );
       }
 
+      /* Destroy existing instance */
       cyRef.current?.destroy();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cy = cytoscape({
         container: containerRef.current,
-        elements: { nodes, edges },
-        // shadow-* props are valid Cytoscape CSS but missing from @types/cytoscape
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        elements: { nodes, edges } as any,
         style: ([
           /* ── Default nodes: cyan glow ──────────────────── */
           {
@@ -132,49 +142,14 @@ export function GraphCanvas({
             },
           },
           /* ── Type-specific nodes ───────────────────────── */
-          {
-            selector: "node.ipv4_addr",
+          ...Object.entries(TYPE_COLORS).map(([type, colors]) => ({
+            selector: `node.${type}`,
             style: {
-              "background-color": TYPE_COLORS.ipv4_addr.bg,
-              "border-color": TYPE_COLORS.ipv4_addr.border,
-              "shadow-color": TYPE_COLORS.ipv4_addr.glow,
+              "background-color": colors.bg,
+              "border-color": colors.border,
+              "shadow-color": colors.glow,
             },
-          },
-          {
-            selector: "node.domain_name",
-            style: {
-              "background-color": TYPE_COLORS.domain_name.bg,
-              "border-color": TYPE_COLORS.domain_name.border,
-              "shadow-color": TYPE_COLORS.domain_name.glow,
-            },
-          },
-          {
-            selector: "node.network_traffic",
-            style: {
-              "background-color": TYPE_COLORS.network_traffic.bg,
-              "border-color": TYPE_COLORS.network_traffic.border,
-              "shadow-color": TYPE_COLORS.network_traffic.glow,
-            },
-          },
-          {
-            selector: "node.note",
-            style: {
-              "background-color": TYPE_COLORS.note.bg,
-              "border-color": TYPE_COLORS.note.border,
-              "shadow-color": TYPE_COLORS.note.glow,
-            },
-          },
-          {
-            selector: "node.server",
-            style: {
-              "background-color": TYPE_COLORS.server.bg,
-              "border-color": TYPE_COLORS.server.border,
-              "shadow-color": TYPE_COLORS.server.glow,
-              "border-width": 3,
-              width: 38,
-              height: 38,
-            },
-          },
+          })),
           /* ── Selected / highlighted ────────────────────── */
           {
             selector: "node:selected",
@@ -229,22 +204,23 @@ export function GraphCanvas({
         wheelSensitivity: 0.3,
       });
 
+      /* Node tap → open detail panel */
       cy.on("tap", "node", (evt) => {
         const node = evt.target as NodeSingular;
         const data = node.data();
-        const classes = node.classes();
-        const isServer = classes.includes("server") || data.type === "ipv4-addr";
+        const nodeType = data.type || node.classes()[0] || "node";
         onNodeSelect({
           id: data.id,
           label: data.label,
-          type: data.type || (isServer ? "server" : "node"),
+          type: nodeType,
           stix: data.stix || {},
-          riskScore: data.riskScore ?? (isServer ? 0.65 : 0.2),
+          riskScore: data.riskScore ?? 0.2,
           entityResolution: data.entityResolution || {},
           metadata: { ...data },
         });
       });
 
+      /* Background tap → deselect */
       cy.on("tap", (evt) => {
         if (evt.target === cy) onNodeSelect(null);
       });
@@ -257,8 +233,9 @@ export function GraphCanvas({
     } finally {
       setLoading(false);
     }
-  }, [pruneLeaves, layoutType, onNodeSelect]);
+  }, [pruneLeaves, layoutType, onNodeSelect, graphData, setGraphData]);
 
+  /* ── Load on mount; re-load when investigation completes ── */
   useEffect(() => {
     loadGraph();
     return () => {
@@ -266,6 +243,15 @@ export function GraphCanvas({
       cyRef.current = null;
     };
   }, [loadGraph]);
+
+  /* ── Sync selected node highlight in Cytoscape ──── */
+  useEffect(() => {
+    if (!cyRef.current) return;
+    cyRef.current.nodes().unselect();
+    if (selectedNodeId) {
+      cyRef.current.$(`#${selectedNodeId}`).select();
+    }
+  }, [selectedNodeId]);
 
   const zoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2);
   const zoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() / 1.2);
@@ -282,6 +268,7 @@ export function GraphCanvas({
           </div>
         </div>
       )}
+
       {/* Error */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
@@ -291,12 +278,13 @@ export function GraphCanvas({
           </div>
         </div>
       )}
-      {/* Mock data indicator */}
+
+      {/* Live indicator */}
       {!loading && !error && (
         <div className="absolute top-4 right-4 z-20">
           <div className="glass-panel rounded-xl px-3 py-1.5 flex items-center gap-2">
-            <DatabaseOff className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] text-slate-400 font-medium">Mock Data Mode</span>
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] text-slate-400 font-medium">Live</span>
           </div>
         </div>
       )}
