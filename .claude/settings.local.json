@@ -12,7 +12,9 @@
       "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/bat-security-toolkit-main.zip\")",
       "Bash(unzip -l \"/c/Users/Atharv/Documents/GitHub/New folder/xRec0n-main.zip\")",
       "Bash(npm install:*)",
-      "Bash(cmd //c \"cd C:\\\\Users\\\\Admin\\\\Documents\\\\GitHub\\\\OSINT-Digital-Footprint-Visualizer\\\\frontend && npm run build 2>&1\")"
+      "Bash(cmd //c \"cd C:\\\\Users\\\\Admin\\\\Documents\\\\GitHub\\\\OSINT-Digital-Footprint-Visualizer\\\\frontend && npm run build 2>&1\")",
+      "Bash(npm run:*)",
+      "Bash(dir:*)"
     ]
   }
 }
