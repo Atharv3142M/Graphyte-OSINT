@@ -182,7 +182,10 @@ export function createTaskStream(
 
       // Propagate celery task status if present
       if (parsed?.type === "result" && parsed?.status) {
-        onStatusChange?.(parsed.status as "success" | "failure");
+        const status = String(parsed.status).toLowerCase();
+        if (status === "success" || status === "failure" || status === "started" || status === "pending") {
+          onStatusChange?.(status as "pending" | "started" | "success" | "failure");
+        }
       }
     } catch {
       // Plain text — pass raw string
@@ -235,11 +238,15 @@ function pollTaskResult(
     attempts++;
 
     try {
-      const status = await getTaskStatus(taskId);
-      onStatusChange?.(status.status as "pending" | "started" | "success" | "failure");
+      const taskStatus = await getTaskStatus(taskId);
+      const rawStatus = taskStatus.status;
+      const normalized = String(rawStatus).toLowerCase();
+      if (normalized === "success" || normalized === "failure" || normalized === "started" || normalized === "pending") {
+        onStatusChange?.(normalized as "pending" | "started" | "success" | "failure");
+      }
 
-      if (status.status === "SUCCESS" || status.status === "FAILURE") {
-        onDone?.(status.result);
+      if (normalized === "success" || normalized === "failure") {
+        onDone?.(taskStatus.result);
         return;
       }
 

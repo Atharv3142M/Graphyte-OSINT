@@ -158,7 +158,7 @@ def main() -> None:
                 max_concurrent=payload.get("max_concurrent", 10),
             )
         else:
-            result = {"error": f"Unknown module: {module_name}"}
+            result = {"error": f"Unknown module: {module_name}", "success": False}
     except Exception as e:
         # Catch any exception from module execution and return as valid JSON
         import traceback

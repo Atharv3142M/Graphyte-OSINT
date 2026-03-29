@@ -58,7 +58,16 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
     Convert a module result into a STIX 2.1 bundle with proper relationship edges.
     Returns None if no meaningful mapping exists.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.debug("[STIX-PIPELINE] module=%s result_keys=%s success=%s has_error=%s",
+                 module_name, list(result.keys()) if result else None,
+                 result.get("success") if result else None, bool(result.get("error") if result else None))
+
     if not result or not result.get("success", True) or result.get("error"):
+        logger.debug("[STIX-PIPELINE] Skipping %s: result=%s success=%s error=%s",
+                     module_name, bool(result), result.get("success") if result else None, result.get("error"))
         return None
 
     objects: List[Dict[str, Any]] = []
@@ -940,8 +949,11 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
     objects.extend(relationships)
 
     if not objects:
+        logger.debug("[STIX-PIPELINE] module=%s: no objects registered, returning None", module_name)
         return None
 
+    logger.info("[STIX-PIPELINE] module=%s: built bundle with %d objects, %d relationships",
+                module_name, len(objects) - len(relationships), len(relationships))
     return {
         "type": "bundle",
         "id": _bundle_id(),
