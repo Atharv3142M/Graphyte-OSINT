@@ -414,7 +414,15 @@ def social_hunter(
     Returns:
         Dict with findings (compatible with STIX pipeline)
     """
-    result = asyncio.run(hunt_usernames(username, platforms, max_concurrent))
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(hunt_usernames(username, platforms, max_concurrent))
+        finally:
+            loop.close()
     return result.to_dict()
 
 

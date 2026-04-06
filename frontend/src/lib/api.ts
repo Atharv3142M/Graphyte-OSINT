@@ -56,6 +56,66 @@ export async function investigate(
   return res.json();
 }
 
+/* ── Playbook dispatch ──────────────────────────────────── */
+
+export interface PlaybookDispatchRequest {
+  target: string;
+  types: string[];
+  intensity?: string;
+}
+
+export interface PlaybookDispatchResponse {
+  playbook_id: string;
+  modules: string[];
+  task_ids: string[];
+  ws_url: string;
+  target: string;
+  types: string[];
+}
+
+export async function dispatchPlaybook(
+  target: string,
+  types: string[],
+  intensity: string = "standard"
+): Promise<PlaybookDispatchResponse> {
+  const res = await fetch(`${API_BASE}/api/investigate`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ target, types, intensity }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail ?? `Request failed with ${res.status}`);
+  }
+  return res.json();
+}
+
+/* ── Playbook plan (from Redis) ─────────────────────────── */
+
+/**
+ * Fetch the initial module plan for a playbook.
+ * Backend stores this at osint:playbook:{id}:plan as a Redis hash.
+ */
+export interface PlaybookModulePlan {
+  module: string;
+  task_id: string;
+  status: string;
+  started_at: string | null;
+}
+
+export async function getPlaybookPlan(
+  playbookId: string
+): Promise<Record<string, PlaybookModulePlan>> {
+  const res = await fetch(`${API_BASE}/api/playbook/${playbookId}/plan`, {
+    headers: headers(),
+  });
+  if (!res.ok) {
+    // Plan may not exist yet — return empty
+    return {};
+  }
+  return res.json();
+}
+
 /* ── Standalone module endpoints ─────────────────────────── */
 
 export interface ModuleRequest {
@@ -175,12 +235,10 @@ export function createTaskStream(
       if (parsed?.type === "done" && !doneFired) {
         doneFired = true;
         ws.close();
-        // Extract final result if present
         const result = parsed?.data ?? parsed?.result ?? undefined;
         onDone?.(result);
       }
 
-      // Propagate celery task status if present
       if (parsed?.type === "result" && parsed?.status) {
         const status = String(parsed.status).toLowerCase();
         if (status === "success" || status === "failure" || status === "started" || status === "pending") {
@@ -188,7 +246,6 @@ export function createTaskStream(
         }
       }
     } catch {
-      // Plain text — pass raw string
       onMessage(ev.data as string, null);
     }
   };
@@ -201,11 +258,8 @@ export function createTaskStream(
     onError?.("WebSocket connection error");
   };
 
-  ws.onclose = () => {
-    // If ws.close() was called manually (done), don't trigger error path
-  };
+  ws.onclose = () => {};
 
-  // Fallback: if WebSocket doesn't connect within 3s, fall back to HTTP polling
   setTimeout(() => {
     if (!wsConnected && !fallbackStarted) {
       fallbackStarted = true;
@@ -217,10 +271,6 @@ export function createTaskStream(
   return ws;
 }
 
-/**
- * HTTP polling fallback when WebSocket fails or is unavailable.
- * Polls /api/tasks/{task_id} every 2 seconds, max 150 attempts (5 minutes).
- */
 function pollTaskResult(
   taskId: string,
   onDone?: (result?: unknown) => void,
@@ -239,8 +289,7 @@ function pollTaskResult(
 
     try {
       const taskStatus = await getTaskStatus(taskId);
-      const rawStatus = taskStatus.status;
-      const normalized = String(rawStatus).toLowerCase();
+      const normalized = String(taskStatus.status).toLowerCase();
       if (normalized === "success" || normalized === "failure" || normalized === "started" || normalized === "pending") {
         onStatusChange?.(normalized as "pending" | "started" | "success" | "failure");
       }
@@ -252,10 +301,75 @@ function pollTaskResult(
 
       setTimeout(poll, INTERVAL_MS);
     } catch {
-      // Keep polling on error
       setTimeout(poll, INTERVAL_MS);
     }
   };
 
   poll();
+}
+
+/* ── Playbook WebSocket stream ─────────────────────────── */
+
+/**
+ * Payload shape from /ws/playbook/{id}:
+ *   { type: "result", module: string, data: {...} }
+ *   { type: "done",   module: string, status: "success"|"failure", error?: string }
+ */
+export interface PlaybookWSMessage {
+  type: "result" | "done" | "stdout" | "stderr";
+  module: string;
+  data?: Record<string, unknown>;
+  status?: string;
+  error?: string;
+}
+
+/**
+ * Connects to the shared playbook WebSocket at /ws/playbook/{playbook_id}.
+ * All module results for the investigation fan out through this single channel.
+ *
+ * onModuleResult(module, data) — called per incoming result
+ * onModuleDone(module, status, error) — called when a module completes (type=done)
+ * onAllDone() — called when all modules have sent "done"
+ *
+ * Returns the WebSocket so the caller can close it.
+ */
+export function createPlaybookStream(
+  playbookId: string,
+  onModuleResult: (module: string, data: Record<string, unknown>) => void,
+  onModuleDone: (module: string, status: string, error?: string) => void,
+  onAllDone?: () => void,
+  onError?: (err: string) => void,
+): WebSocket {
+  const ws = new WebSocket(`${WS_BASE}/ws/playbook/${playbookId}`);
+  const doneModules = new Set<string>();
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data as string) as PlaybookWSMessage;
+      const module = msg.module ?? "";
+
+      if (msg.type === "result" && msg.data) {
+        onModuleResult(module, msg.data);
+      } else if (msg.type === "done") {
+        doneModules.add(module);
+        onModuleDone(module, msg.status ?? "success", msg.error);
+        if (msg.error) {
+          // If a module errors, consider the stream potentially done
+          onError?.(`module ${module} error: ${msg.error}`);
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  };
+
+  ws.onerror = () => {
+    onError?.("Playbook WebSocket error");
+  };
+
+  ws.onclose = () => {
+    onAllDone?.();
+  };
+
+  return ws;
 }

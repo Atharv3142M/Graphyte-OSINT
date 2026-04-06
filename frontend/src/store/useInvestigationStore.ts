@@ -45,7 +45,40 @@ export interface OSINTEdge {
   };
 }
 
-/* ── Store shape ────────────────────────────────────────── */
+/* ── Per-module result entry ─────────────────────────────── */
+
+export type ResultStatus = "pending" | "running" | "done" | "error";
+
+export interface ModuleResultEntry {
+  taskId: string;
+  status: ResultStatus;
+  result: Record<string, unknown> | null;
+  timestamp: number;
+  error?: string;
+}
+
+/* ── Playbook result store ──────────────────────────────── */
+/*
+ * resultStore is keyed by playbook_id.
+ * Each value is a PlaybookResults object containing a map of
+ * module_name -> ModuleResultEntry.
+ *
+ * This matches the Redis plan structure:
+ *   playbook_id -> { modules: { module_name -> { taskId, status, result, timestamp } } }
+ */
+
+export interface PlaybookResults {
+  target: string;
+  types: string[];
+  modules: Record<string, ModuleResultEntry>;
+  startedAt: number;
+}
+
+export interface ResultStore {
+  [playbookId: string]: PlaybookResults;
+}
+
+/* ── Store shape ───────────────────────────────────────── */
 
 interface InvestigationStore {
   /* Active investigation */
@@ -60,6 +93,9 @@ interface InvestigationStore {
 
   /* STIX graph */
   graphData: GraphData | null;
+
+  /* Module results — keyed by playbook_id */
+  resultStore: ResultStore;
 
   /* Selected node for detail panel */
   selectedNode: NodeDetail | null;
@@ -79,6 +115,14 @@ interface InvestigationStore {
   openDetailPanel: (node: NodeDetail) => void;
   closeDetailPanel: () => void;
   setPruneLeaves: (v: boolean) => void;
+
+  /* Playbook result store actions */
+  initPlaybook: (playbookId: string, target: string, types: string[], plan: Record<string, { module: string; task_id: string; status: string }>) => void;
+  setModuleStatus: (playbookId: string, module: string, status: ResultStatus, error?: string) => void;
+  setModuleResult: (playbookId: string, module: string, data: Record<string, unknown>) => void;
+  clearPlaybook: (playbookId: string) => void;
+  clearAllResults: () => void;
+
   reset: () => void;
 }
 
@@ -92,12 +136,13 @@ const initialState = {
   orchestratorSummary: null,
   streamLog: [],
   graphData: null,
+  resultStore: {} as ResultStore,
   selectedNode: null,
   detailPanelOpen: false,
   pruneLeaves: false,
 };
 
-/* ── Store ──────────────────────────────────────────────── */
+/* ── Store ─────────────────────────────────────────────── */
 
 export const useInvestigationStore = create<InvestigationStore>((set) => ({
   ...initialState,
@@ -126,6 +171,87 @@ export const useInvestigationStore = create<InvestigationStore>((set) => ({
   closeDetailPanel: () => set({ selectedNode: null, detailPanelOpen: false }),
 
   setPruneLeaves: (v) => set({ pruneLeaves: v }),
+
+  /* ── Playbook result store actions ────────────────────── */
+
+  initPlaybook: (playbookId, target, types, plan) =>
+    set((state) => {
+      // plan is keyed by display name; value has task_id + module (task name)
+      const modules: Record<string, ModuleResultEntry> = {};
+      for (const [_modKey, entry] of Object.entries(plan)) {
+        const modName = entry.module ?? _modKey;
+        modules[modName] = {
+          taskId: entry.task_id,
+          status: (entry.status as ResultStatus) ?? "pending",
+          result: null,
+          timestamp: Date.now(),
+        };
+      }
+      return {
+        resultStore: {
+          ...state.resultStore,
+          [playbookId]: { target, types, modules, startedAt: Date.now() },
+        },
+      };
+    }),
+
+  setModuleStatus: (playbookId, module, status, error) =>
+    set((state) => {
+      const pb = state.resultStore[playbookId];
+      if (!pb) return state;
+      const mod = pb.modules[module];
+      if (!mod) return state;
+      return {
+        resultStore: {
+          ...state.resultStore,
+          [playbookId]: {
+            ...pb,
+            modules: {
+              ...pb.modules,
+              [module]: {
+                ...mod,
+                status,
+                ...(error ? { error } : {}),
+              },
+            },
+          },
+        },
+      };
+    }),
+
+  setModuleResult: (playbookId, module, data) =>
+    set((state) => {
+      const pb = state.resultStore[playbookId];
+      if (!pb) return state;
+      const mod = pb.modules[module];
+      if (!mod) return state;
+      return {
+        resultStore: {
+          ...state.resultStore,
+          [playbookId]: {
+            ...pb,
+            modules: {
+              ...pb.modules,
+              [module]: {
+                ...mod,
+                result: data,
+                status: "done" as ResultStatus,
+                timestamp: Date.now(),
+              },
+            },
+          },
+        },
+      };
+    }),
+
+  clearPlaybook: (playbookId) =>
+    set((state) => {
+      const next = { ...state.resultStore };
+      delete next[playbookId];
+      return { resultStore: next };
+    }),
+
+  clearAllResults: () => set({ resultStore: {} as ResultStore }),
 
   reset: () => set(initialState),
 }));

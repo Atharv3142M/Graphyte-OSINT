@@ -323,9 +323,15 @@ def cert_transparency(
     Returns:
         Dict with findings (compatible with STIX pipeline)
     """
-    import asyncio
+    import asyncio, concurrent.futures
 
-    result = asyncio.run(search_certificates(domain, use_html_fallback))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(search_certificates(domain, use_html_fallback))
+        finally:
+            loop.close()
     return result.to_dict()
 
 

@@ -255,21 +255,49 @@ export function GraphCanvas({
     }
   }, [pruneLeaves, layoutType, onNodeSelect, graphData, setGraphData]);
 
-  /* ── Load on mount; re-load when graphData changes ── */
+  /* ── Load on mount only; live graph patches use cy.add()/cy.remove() ── */
   useEffect(() => {
     loadGraph();
     return () => {
       cyRef.current?.destroy();
       cyRef.current = null;
     };
-  }, [loadGraph]);
+    // loadGraph is stable via useCallback — intentionally run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  /* ── Re-render when graphData is updated ── */
+  /* ── Live graph patching: add new nodes/edges without remounting ── */
   useEffect(() => {
-    if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+    if (!graphData || !graphData.nodes || graphData.nodes.length === 0) return;
+
+    /* No cytoscape instance yet — create it from current graphData */
+    if (!cyRef.current) {
       loadGraph();
+      return;
     }
-  }, [graphData]);
+
+    /* Patch existing instance with new nodes/edges */
+    const existingNodeIds = new Set(cyRef.current.nodes().map((n) => n.id()));
+    const newNodes = graphData.nodes.filter((n) => !existingNodeIds.has(n.data?.id));
+    const newEdges = graphData.edges.filter(
+      (e) =>
+        existingNodeIds.has(e.data?.source) &&
+        existingNodeIds.has(e.data?.target) &&
+        !cyRef.current!.edges().some((ce) => (ce as cytoscape.EdgeSingular).id() === e.data?.id)
+    );
+
+    if (newNodes.length > 0 || newEdges.length > 0) {
+      const existingZoom = cyRef.current.zoom();
+      const existingPan = cyRef.current.pan();
+      if (newNodes.length > 0) cyRef.current.add(newNodes as cytoscape.ElementDefinition[]);
+      if (newEdges.length > 0) cyRef.current.add(newEdges as cytoscape.ElementDefinition[]);
+      cyRef.current.zoom(existingZoom);
+      cyRef.current.pan(existingPan);
+      setNodeCount(cyRef.current.nodes().length);
+      setEdgeCount(cyRef.current.edges().length);
+      setGraphEmpty(cyRef.current.nodes().length === 0);
+    }
+  }, [graphData, loadGraph]);
 
   /* ── Sync selected node highlight in Cytoscape ──── */
   useEffect(() => {

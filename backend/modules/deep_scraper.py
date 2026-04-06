@@ -537,9 +537,15 @@ def deep_scraper(
     Returns:
         Dict with all extracted entities
     """
-    import asyncio
+    import asyncio, concurrent.futures
 
-    result = asyncio.run(deep_crawl(url, max_depth, max_pages, max_concurrent))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(deep_crawl(url, max_depth, max_pages, max_concurrent))
+        finally:
+            loop.close()
     return result.to_dict()
 
 

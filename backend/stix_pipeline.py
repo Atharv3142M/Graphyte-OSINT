@@ -933,7 +933,7 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
         sources = xrecon_data.get("sources", [])
         if isinstance(sources, list):
             for src in sources[:50]:
-                if isinstance(src, str) and ("://" in src or src.startswith("http"):
+                if isinstance(src, str) and ("://" in src or src.startswith("http")):
                     src_obj = {
                         "type": "url",
                         "id": _obj_id("url"),

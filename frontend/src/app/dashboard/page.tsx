@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Search,
   Target,
@@ -16,10 +16,19 @@ import {
   RefreshCw,
   Server,
   Wifi,
+  LayoutList,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { investigate, runModule, createTaskStream, fetchGraph } from "@/lib/api";
+import {
+  investigate,
+  dispatchPlaybook,
+  createPlaybookStream,
+  fetchGraph,
+} from "@/lib/api";
 import { useInvestigationStore } from "@/store/useInvestigationStore";
+import { classify, normalizeInput, type DetectedType } from "@/lib/classifier";
+import { ResultPanel } from "@/components/ResultPanel";
 
 type WorkflowIntensity = "low" | "standard" | "aggressive" | "agent";
 
@@ -35,6 +44,7 @@ export default function DashboardPage() {
   const [intensity, setIntensity] = useState<WorkflowIntensity>("standard");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [resultPanelOpen, setResultPanelOpen] = useState(false);
 
   const [graphStats, setGraphStats] = useState({ nodes: 0, edges: 0 });
   const [recentTasks, setRecentTasks] = useState<Array<{
@@ -45,12 +55,17 @@ export default function DashboardPage() {
     timestamp: string;
     riskScore?: number;
   }>>([]);
-  const [taskType, setTaskType] = useState<string>("DNS Intel");
+
+  // Active playbook WebSocket ref — closed on next run or unmount
+  const wsRef = useRef<WebSocket | null>(null);
 
   const appendLog = useInvestigationStore((s) => s.appendLog);
   const setGraphData = useInvestigationStore((s) => s.setGraphData);
   const setStatus = useInvestigationStore((s) => s.setStatus);
-  const streamLog = useInvestigationStore((s) => s.streamLog);
+  const initPlaybook = useInvestigationStore((s) => s.initPlaybook);
+  const setModuleStatus = useInvestigationStore((s) => s.setModuleStatus);
+  const setModuleResult = useInvestigationStore((s) => s.setModuleResult);
+  const resultStore = useInvestigationStore((s) => s.resultStore);
 
   // Fetch real graph stats on mount
   useEffect(() => {
@@ -90,7 +105,7 @@ export default function DashboardPage() {
     const taskEntry = {
       id: Date.now().toString(),
       target: target.trim(),
-      type: taskType,
+      type: "Playbook",
       status: "running" as const,
       timestamp: "Just now",
     };
@@ -115,106 +130,89 @@ export default function DashboardPage() {
         );
         await refreshStats();
       } else {
-        // Map selected module type to API endpoint
-        const endpointMap: Record<string, { endpoint: string; body: Record<string, string> }> = {
-          "DNS Intel": { endpoint: "/api/dns-intel", body: { domain: target } },
-          "Port Scan": { endpoint: "/api/port-scan", body: { host: target } },
-          "WHOIS": { endpoint: "/api/whois", body: { domain: target } },
-          "SSL Analysis": { endpoint: "/api/ssl-analyze", body: { host: target } },
-          "HTTP Security": { endpoint: "/api/http-security", body: { url: target } },
-          "Tech Stack": { endpoint: "/api/tech-stack", body: { url: target } },
-          "Cert Transparency": { endpoint: "/api/cert-transparency", body: { domain: target } },
-          "Social Hunter": { endpoint: "/api/social-hunter", body: { username: target } },
-          "Deep Scraper": { endpoint: "/api/deep-scraper", body: { url: target } },
-          "Shodan Recon": { endpoint: "/api/shodan", body: { target } },
-          "Censys Recon": { endpoint: "/api/censys", body: { target } },
-        };
-        const selected = endpointMap[taskType];
-        if (!selected) {
-          appendLog(`\x1b[31m[Error]\x1b[0m Unknown module: ${taskType}`);
+        // ── Phase 2: Smart search via playbook dispatch ──────────────────
+        const normalized = normalizeInput(target.trim());
+        const detectedTypes = classify(normalized);
+        const typesToSend: string[] = detectedTypes.length > 0
+          ? detectedTypes
+          : (["domain"] as DetectedType[]);
+
+        // Normalise intensity to what the backend expects
+        // @ts-ignore — agent is handled in the earlier branch, this cast is intentional
+        const intensityValue = (intensity === "agent" ? "standard" : intensity) as "low" | "standard" | "aggressive";
+
+        appendLog(`\x1b[36m[Playbook]\x1b[0m Dispatching to /api/investigate — target: ${normalized}, types: ${typesToSend.join(", ")}, intensity: ${intensityValue}`);
+
+        let dispatchRes: Awaited<ReturnType<typeof dispatchPlaybook>> | null = null;
+        try {
+          dispatchRes = await dispatchPlaybook(normalized, typesToSend, intensityValue);
+        } catch (err) {
+          appendLog(`\x1b[31m[Error]\x1b[0m ${err instanceof Error ? err.message : String(err)}`);
+          setStatus("error");
           setIsRunning(false);
           return;
         }
-        const res = await runModule(selected.endpoint as Parameters<typeof runModule>[0], selected.body as Parameters<typeof runModule>[1]);
-        appendLog(`\x1b[36m[Task]\x1b[0m Queued — ${res.task_id}`);
-        appendLog(`\x1b[90mStream: ${typeof window !== 'undefined' ? window.location.protocol + '//' + window.location.host : 'ws://localhost:8000'}/ws/task/${res.task_id}\x1b[0m`);
 
-        let wsClosed = false;
-        const ws = createTaskStream(
-          res.task_id,
-          (_raw, parsed) => {
-            // Forward stream messages to terminal
-            if (parsed?.type === "stdout" || parsed?.type === "stderr") {
-              const line = parsed.data as string;
-              if (line) appendLog(line);
-            }
-            if (parsed?.type === "result" && parsed?.data) {
-              const result = parsed.data as Record<string, unknown>;
-              if (result.error) {
-                appendLog(`\x1b[31m[Error]\x1b[0m ${result.error}`);
-              }
+        const { playbook_id, modules, ws_url } = dispatchRes as { playbook_id: string; modules: string[]; ws_url: string };
+        appendLog(`\x1b[36m[Playbook]\x1b[0m playbook_id=${playbook_id}, modules=${modules.join(", ")}`);
+        appendLog(`\x1b[90mWS: ${ws_url}\x1b[0m`);
+
+        // Close any previous playbook WS
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
+        // Track this playbook in the store
+        // We initialise with the module list from the dispatch response.
+        // Since the plan endpoint may not have written to Redis yet,
+        // we initialise from the response payload directly.
+        const fakePlan: Record<string, { module: string; task_id: string; status: string }> = {};
+        modules.forEach((m, i) => {
+          fakePlan[m] = { module: m, task_id: "", status: "queued" };
+        });
+        initPlaybook(playbook_id, normalized, typesToSend, fakePlan);
+
+        // Open playbook WebSocket — this is the single channel all module results flow through
+        const ws = createPlaybookStream(
+          playbook_id,
+          // onModuleResult: store each result as it streams in
+          (module, data) => {
+            appendLog(`\x1b[32m[${module}]\x1b[0m result received`);
+            setModuleResult(playbook_id, module, data);
+            if (data?.error) {
+              appendLog(`\x1b[31m[Error]\x1b[0m ${data.error}`);
             }
           },
-          async (_finalResult) => {
-            // WebSocket sent "done" — fetch final task result from backend
-            setIsRunning(false);
-            try {
-              const taskResult = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/tasks/${res.task_id}`,
-                {
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Tenant-ID": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                  },
-                }
-              ).then((r) => r.json()) as { status: string; result?: Record<string, unknown> };
-
-              const isFailure =
-                taskResult.status === "FAILURE" ||
-                (taskResult.result && typeof taskResult.result === "object" && "error" in taskResult.result);
-
-              if (isFailure) {
-                setStatus("error");
-                const errMsg = taskResult.result?.error as string | undefined;
-                if (errMsg) appendLog(`\x1b[31m[Error]\x1b[0m ${errMsg}`);
-                setRecentTasks((prev) =>
-                  prev.map((t) => t.id === taskEntry.id ? { ...t, status: "failed" as const } : t)
-                );
-              } else {
-                setStatus("done");
-                setRecentTasks((prev) =>
-                  prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
-                );
-              }
-            } catch {
-              // Could not fetch task result — assume done
-              setStatus("done");
-              setRecentTasks((prev) =>
-                prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
-              );
+          // onModuleDone: mark the module done or errored
+          (module, _status, error) => {
+            if (error) {
+              appendLog(`\x1b[31m[${module}]\x1b[0m ${error}`);
+              setModuleStatus(playbook_id, module, "error", error);
+            } else {
+              appendLog(`\x1b[32m[${module}]\x1b[0m done`);
+              setModuleStatus(playbook_id, module, "done");
             }
+          },
+          // onAllDone: investigation complete
+          () => {
+            appendLog(`\x1b[32m[Playbook]\x1b[0m All modules complete`);
+            setIsRunning(false);
+            setStatus("done");
+            setRecentTasks((prev) =>
+              prev.map((t) => t.id === taskEntry.id ? { ...t, status: "completed" as const } : t)
+            );
             refreshStats().catch(console.error);
           },
+          // onError
           (err) => {
             appendLog(`\x1b[31m[WS Error]\x1b[0m ${err}`);
           },
-          (celeryStatus) => {
-            // Map Celery status to UI status
-            if (celeryStatus === "started") {
-              setStatus("running");
-            } else if (celeryStatus === "success") {
-              setStatus("done");
-            } else if (celeryStatus === "failure") {
-              setStatus("error");
-              setIsRunning(false);
-              setRecentTasks((prev) =>
-                prev.map((t) => t.id === taskEntry.id ? { ...t, status: "failed" as const } : t)
-              );
-            }
-          }
         );
-        appendLog(`\x1b[32m[WS]\x1b[0m Connected`);
-        return () => { ws.close(); };
+
+        wsRef.current = ws;
+        appendLog(`\x1b[32m[WS]\x1b[0m Connected to /ws/playbook/${playbook_id}`);
+        setResultPanelOpen(true);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -226,7 +224,7 @@ export default function DashboardPage() {
     } finally {
       setIsRunning(false);
     }
-  }, [target, intensity, appendLog, setGraphData, setStatus, refreshStats, taskType]);
+  }, [target, intensity, appendLog, setGraphData, setStatus, refreshStats, initPlaybook, setModuleStatus, setModuleResult]);
 
   const currentIntensity = INTENSITIES.find((i) => i.value === intensity)!;
 
@@ -256,6 +254,11 @@ export default function DashboardPage() {
   const securityScore = totalScans > 0
     ? Math.min(99, 40 + Math.round((graphStats.edges / Math.max(graphStats.nodes, 1)) * 20))
     : 0;
+
+  // Total running modules across all playbooks (for badge count)
+  const totalRunningModules = Object.values(resultStore).reduce((sum, pb) => {
+    return sum + Object.values(pb.modules).filter((m) => m.status === "pending" || m.status === "running").length;
+  }, 0);
 
   return (
     <div className="h-full overflow-y-auto bg-slate-950">
@@ -294,36 +297,19 @@ export default function DashboardPage() {
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleInvestigate()}
-                placeholder="IP, domain, URL, or email..."
+                placeholder="IP, domain, URL, email, or username..."
                 disabled={isRunning}
                 className="w-full pl-8 pr-3 py-2 text-xs border border-slate-700 bg-slate-950 text-slate-200 placeholder:text-slate-600 outline-none focus:border-cyan-600 transition-colors font-mono"
               />
             </div>
-            {/* Module type selector */}
-            <select
-              value={taskType}
-              onChange={(e) => setTaskType(e.target.value)}
-              disabled={isRunning}
-              className="px-2 py-2 text-xs border border-slate-700 bg-slate-950 text-slate-300 outline-none focus:border-cyan-600 transition-colors"
-            >
-              <option value="DNS Intel">DNS Intel</option>
-              <option value="Port Scan">Port Scan</option>
-              <option value="WHOIS">WHOIS</option>
-              <option value="SSL Analysis">SSL Analysis</option>
-              <option value="HTTP Security">HTTP Security</option>
-              <option value="Tech Stack">Tech Stack</option>
-              <option value="Cert Transparency">Cert Transparency</option>
-              <option value="Social Hunter">Social Hunter</option>
-              <option value="Deep Scraper">Deep Scraper</option>
-              <option value="Shodan Recon">Shodan Recon</option>
-              <option value="Censys Recon">Censys Recon</option>
-            </select>
+            {/* Intensity selector */}
             <div className="relative">
               <button
                 onClick={() => setDropdownOpen((v) => !v)}
                 className="flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium border border-slate-700 hover:border-slate-600 transition-colors text-slate-300"
               >
                 <span className={currentIntensity.color}>{currentIntensity.label}</span>
+                <ChevronDown className="w-3 h-3 text-slate-500" />
               </button>
               {dropdownOpen && (
                 <div className="absolute top-full right-0 mt-1 border border-slate-700 bg-slate-900 py-1 min-w-[110px] z-50">
@@ -343,6 +329,17 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            <button
+              onClick={() => setResultPanelOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-2 text-xs border border-slate-700 hover:border-slate-600 transition-colors text-slate-400"
+              title="View results"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span>Results</span>
+              {totalRunningModules > 0 && (
+                <span className="text-cyan-400 font-mono">{totalRunningModules}</span>
+              )}
+            </button>
             <button
               onClick={handleInvestigate}
               disabled={isRunning || !target.trim()}
@@ -499,6 +496,12 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Result slide-over panel */}
+      <ResultPanel
+        isOpen={resultPanelOpen}
+        onClose={() => setResultPanelOpen(false)}
+      />
     </div>
   );
 }

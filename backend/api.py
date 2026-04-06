@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -470,6 +470,142 @@ def api_semantic_search(req: SemanticSearchRequest):
         raise HTTPException(status_code=503, detail=str(e))
 
 
+class InvestigateRequest(BaseModel):
+    """Smart search — fan out to all relevant modules for the detected input type."""
+    target: str
+    types: list[str]
+    intensity: str = "standard"
+
+
+@app.post("/api/investigate")
+def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    """
+    POST /api/investigate
+    Accepts a target + detected types, looks up the routing map,
+    dispatches all relevant Celery tasks as a group, and returns a playbook_id.
+    """
+    import uuid
+
+    from backend.playbook import get_modules_for_types, get_module_display_names
+    from backend.celery_app import celery_app
+
+    playbook_id = f"pb-{uuid.uuid4().hex[:12]}"
+
+    # Resolve task names for the detected types
+    modules = get_modules_for_types(req.types, req.intensity)
+    display_names = get_module_display_names(modules)
+
+    _log_audit(x_tenant_id, "playbook_investigate", req.target, "initiated")
+    _publish_event("osint.investigation.started", {
+        "action": "playbook_investigate",
+        "target": req.target,
+        "playbook_id": playbook_id,
+        "modules": display_names,
+    })
+
+    if not modules:
+        raise HTTPException(status_code=422, detail=f"No modules available for types: {req.types}")
+
+    # Build a Redis pub/sub channel for this playbook
+    playbook_chan = f"osint:playbook:{playbook_id}"
+    task_ids: list[str] = []
+
+    try:
+        # Import task signatures
+        from backend.tasks import (
+            task_dns_intel, task_whois_lookup, task_ssl_analyze,
+            task_http_security, task_tech_stack, task_cert_transparency,
+            task_port_scan, task_social_hunter, task_deep_scraper,
+            task_cyberninja_passive, task_xrecon, task_shodan, task_censys,
+            task_graysentinel_ingest,
+        )
+
+        TASK_MAP: dict[str, callable] = {
+            "tasks.dns_intel": task_dns_intel,
+            "tasks.whois_lookup": task_whois_lookup,
+            "tasks.ssl_analyze": task_ssl_analyze,
+            "tasks.http_security": task_http_security,
+            "tasks.tech_stack": task_tech_stack,
+            "tasks.cert_transparency": task_cert_transparency,
+            "tasks.port_scan": task_port_scan,
+            "tasks.social_hunter": task_social_hunter,
+            "tasks.deep_scraper": task_deep_scraper,
+            "tasks.cyberninja_passive": task_cyberninja_passive,
+            "tasks.xrecon": task_xrecon,
+            "tasks.shodan_recon": task_shodan,
+            "tasks.censys_recon": task_censys,
+            "tasks.graysentinel_ingest": task_graysentinel_ingest,
+        }
+
+        # Build arguments per task based on its signature
+        def build_args(task_name: str, target: str) -> tuple:
+            if task_name == "tasks.dns_intel":
+                return (target, False, None)
+            elif task_name == "tasks.whois_lookup":
+                return (target,)
+            elif task_name == "tasks.ssl_analyze":
+                return (target, 443, 10)
+            elif task_name == "tasks.http_security":
+                url = target if target.startswith("http") else f"https://{target}"
+                return (url, 10)
+            elif task_name == "tasks.tech_stack":
+                url = target if target.startswith("http") else f"https://{target}"
+                return (url, 10)
+            elif task_name == "tasks.cert_transparency":
+                return (target, True)
+            elif task_name == "tasks.port_scan":
+                return (target, None, 20, 2.0)
+            elif task_name == "tasks.social_hunter":
+                return (target, 20)
+            elif task_name == "tasks.deep_scraper":
+                url = target if target.startswith("http") else f"https://{target}"
+                return (url, 2, 50, 10)
+            elif task_name == "tasks.cyberninja_passive":
+                return ([target], None, None)
+            elif task_name == "tasks.xrecon":
+                return (target, "auto")
+            elif task_name in ("tasks.shodan_recon", "tasks.censys_recon"):
+                return (target, None)
+            elif task_name == "tasks.graysentinel_ingest":
+                url = target if target.startswith("http") else f"https://{target}"
+                return ([url], None)
+            else:
+                return (target,)
+
+        # Dispatch all tasks with playbook_id in kwargs for WS correlation
+        for task_name in modules:
+            task_sig = TASK_MAP.get(task_name)
+            if not task_sig:
+                continue
+            args = build_args(task_name, req.target)
+            result = task_sig.delay(*args, playbook_id=playbook_id, playbook_chan=playbook_chan)
+            task_ids.append(result.id)
+
+        # Store playbook plan in Redis (for WS to read initial state)
+        redis = _redis()
+        plan = [
+            {"module": name, "task_id": tid, "status": "queued", "started_at": None}
+            for name, tid in zip(display_names, task_ids)
+        ]
+        redis.hset(f"osint:playbook:{playbook_id}:plan", mapping={
+            m: json.dumps({"task_id": tid, "status": "queued", "module": m})
+            for m, tid in zip(display_names, task_ids)
+        })
+        redis.expire(f"osint:playbook:{playbook_id}:plan", 3600)
+
+        return {
+            "playbook_id": playbook_id,
+            "modules": display_names,
+            "task_ids": task_ids,
+            "ws_url": f"/ws/playbook/{playbook_id}",
+            "target": req.target,
+            "types": req.types,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/agent/investigate")
 def api_agent_investigate(req: AgentInvestigateRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     """
@@ -637,6 +773,21 @@ def get_graph():
         raise HTTPException(status_code=503, detail=str(e))
 
 
+@app.get("/api/playbook/{playbook_id}/plan")
+def get_playbook_plan(playbook_id: str):
+    """
+    Fetch the module execution plan for a playbook from Redis.
+    Returns a dict of module_name -> {task_id, status, module}.
+    """
+    redis = _redis()
+    raw = redis.hgetall(f"osint:playbook:{playbook_id}:plan")
+    if not raw:
+        return {}
+    return {
+        k: json.loads(v) for k, v in raw.items()
+    }
+
+
 @app.get("/api/tasks/{task_id}")
 def get_task_result(task_id: str):
     """
@@ -689,6 +840,53 @@ async def websocket_task_stream(websocket: WebSocket, task_id: str):
                     obj = json.loads(payload)
                     if obj.get("type") == "done":
                         break
+                except (json.JSONDecodeError, WebSocketDisconnect):
+                    break
+
+    try:
+        await asyncio.wait_for(send_to_client(), timeout=3600)
+    except asyncio.TimeoutError:
+        pass
+@app.websocket("/ws/playbook/{playbook_id}")
+async def websocket_playbook_stream(websocket: WebSocket, playbook_id: str):
+    """
+    WebSocket for a full playbook — fans out results from all tasks in the group.
+
+    Redis pub/sub channel: osint:playbook:{playbook_id}
+    Each task in the group publishes to this channel with:
+      {"type": "result", "module": "...", "data": {...}}
+      {"type": "done",  "module": "...", "status": "success|failure", "error": "..."}
+    """
+    await websocket.accept()
+    redis = _redis()
+    pubsub = redis.pubsub()
+    chan = f"osint:playbook:{playbook_id}"
+    pubsub.subscribe(chan)
+
+    loop = asyncio.get_event_loop()
+    done_modules: set[str] = set()
+    all_modules_raw = set()
+
+    async def send_to_client():
+        while True:
+            msg = await loop.run_in_executor(
+                None,
+                lambda: pubsub.get_message(ignore_subscribe_messages=True, timeout=1),
+            )
+            if msg is None:
+                await asyncio.sleep(0.05)
+                continue
+            if msg["type"] == "message":
+                try:
+                    payload = msg["data"].decode("utf-8")
+                    obj = json.loads(payload)
+                    module = obj.get("module", "")
+                    all_modules_raw.add(module)
+                    await websocket.send_text(payload)
+                    if obj.get("type") == "done":
+                        done_modules.add(module)
+                        if obj.get("error"):
+                            break
                 except (json.JSONDecodeError, WebSocketDisconnect):
                     break
 
