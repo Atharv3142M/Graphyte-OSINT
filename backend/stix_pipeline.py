@@ -944,6 +944,113 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
                     relate(note_obj["id"], src_obj["id"], "contains")
 
     # -------------------------------------------------------------------------
+    # IP Geolocation
+    # -------------------------------------------------------------------------
+    elif module_name == "ip_geolocation":
+        ip_value = result.get("ip")
+        if ip_value:
+            ip_obj = {"type": "ipv4-addr", "id": _obj_id("ipv4-addr"), "value": ip_value}
+            register(ip_obj)
+            note_obj = {
+                "type": "note",
+                "id": _obj_id("note"),
+                "created": now,
+                "modified": now,
+                "abstract": f"IP geolocation for {ip_value}",
+                "content": result,
+            }
+            register(note_obj)
+            relate(ip_obj["id"], note_obj["id"], "located-at")
+
+    # -------------------------------------------------------------------------
+    # Reverse IP
+    # -------------------------------------------------------------------------
+    elif module_name == "reverse_ip_lookup":
+        ip_value = result.get("ip")
+        domains = result.get("domains", [])
+        if ip_value:
+            ip_obj = {"type": "ipv4-addr", "id": _obj_id("ipv4-addr"), "value": ip_value}
+            register(ip_obj)
+            for domain in domains[:100]:
+                dom_obj = {"type": "domain-name", "id": _obj_id("domain-name"), "value": domain}
+                register(dom_obj)
+                relate(ip_obj["id"], dom_obj["id"], "resolves-to")
+
+    # -------------------------------------------------------------------------
+    # BGP / ASN
+    # -------------------------------------------------------------------------
+    elif module_name == "bgp_asn_lookup":
+        note_obj = {
+            "type": "note",
+            "id": _obj_id("note"),
+            "created": now,
+            "modified": now,
+            "abstract": f"BGP/ASN lookup for {result.get('target', '')}",
+            "content": result.get("data", {}),
+        }
+        register(note_obj)
+
+    # -------------------------------------------------------------------------
+    # Wayback
+    # -------------------------------------------------------------------------
+    elif module_name == "wayback_machine":
+        target = result.get("target", "")
+        snapshots = result.get("snapshots", [])
+        target_obj = {"type": "domain-name", "id": _obj_id("domain-name"), "value": target}
+        register(target_obj)
+        for snap in snapshots[:100]:
+            snapshot_url = snap.get("snapshot_url")
+            if not snapshot_url:
+                continue
+            url_obj = {"type": "url", "id": _obj_id("url"), "value": snapshot_url, "x_source": "wayback"}
+            register(url_obj)
+            relate(target_obj["id"], url_obj["id"], "related-to")
+
+    # -------------------------------------------------------------------------
+    # Email Header Analyzer
+    # -------------------------------------------------------------------------
+    elif module_name == "email_header_analyzer":
+        for ip in result.get("ips", [])[:50]:
+            ip_obj = {"type": "ipv4-addr", "id": _obj_id("ipv4-addr"), "value": ip}
+            register(ip_obj)
+        note_obj = {
+            "type": "note",
+            "id": _obj_id("note"),
+            "created": now,
+            "modified": now,
+            "abstract": "Email header analysis",
+            "content": result,
+        }
+        register(note_obj)
+
+    # -------------------------------------------------------------------------
+    # Sherlock
+    # -------------------------------------------------------------------------
+    elif module_name == "sherlock_hunt":
+        username = result.get("username")
+        found = result.get("found", [])
+        if username:
+            ident = {
+                "type": "identity",
+                "id": _obj_id("identity"),
+                "name": username,
+                "identity_class": "individual",
+            }
+            register(ident)
+            for profile in found[:300]:
+                platform = profile.get("platform", "unknown")
+                profile_url = profile.get("url", "")
+                account = {
+                    "type": "user-account",
+                    "id": _obj_id("user-account"),
+                    "account_login": username,
+                    "account_type": str(platform).lower(),
+                    "x_profile_url": profile_url,
+                }
+                register(account)
+                relate(ident["id"], account["id"], "associated-with")
+
+    # -------------------------------------------------------------------------
     # Merge all relationships into the bundle
     # -------------------------------------------------------------------------
     objects.extend(relationships)

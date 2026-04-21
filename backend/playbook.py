@@ -29,6 +29,9 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
         "tasks.xrecon",
         "tasks.shodan_recon",
         "tasks.censys_recon",
+        "tasks.ip_geolocation",
+        "tasks.reverse_ip_lookup",
+        "tasks.bgp_asn_lookup",
     ],
 
     # ── IPv6 ──────────────────────────────────────────────────────────────────
@@ -56,6 +59,9 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
         "tasks.cert_transparency",
         "tasks.cyberninja_passive",
         "tasks.xrecon",
+        "tasks.wayback_machine",
+        "tasks.ip_geolocation",
+        "tasks.reverse_ip_lookup",
     ],
 
     # ── URL ───────────────────────────────────────────────────────────────────
@@ -67,6 +73,7 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
         "tasks.deep_scraper",
         "tasks.graysentinel_ingest",
         "tasks.xrecon",
+        "tasks.wayback_machine",
     ],
 
     # ── Email ──────────────────────────────────────────────────────────────────
@@ -79,6 +86,7 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
     # ── Username ───────────────────────────────────────────────────────────────
     "username": [
         "tasks.social_hunter",
+        "tasks.sherlock_hunt",
         "tasks.xrecon",
         "tasks.cyberninja_passive",
     ],
@@ -104,6 +112,7 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
     "asn": [
         "tasks.whois_lookup",
         "tasks.cyberninja_passive",
+        "tasks.bgp_asn_lookup",
     ],
 
     # ── Company (low confidence — manual confirm) ─────────────────────────────────
@@ -133,6 +142,12 @@ MODULE_NAMES: Final[dict[str, str]] = {
     "tasks.censys_recon": "Censys Recon",
     "tasks.graysentinel_ingest": "GraySentinel",
     "tasks.metadata_extract": "Metadata Extract",
+    "tasks.ip_geolocation": "IP Geolocation",
+    "tasks.reverse_ip_lookup": "Reverse IP",
+    "tasks.bgp_asn_lookup": "BGP / ASN",
+    "tasks.wayback_machine": "Wayback Machine",
+    "tasks.email_header_analyzer": "Email Header",
+    "tasks.sherlock_hunt": "Sherlock",
 }
 
 # ── Intensity tiers ────────────────────────────────────────────────────────────
@@ -145,6 +160,7 @@ INTENSITY_EXCLUSIONS: Final[dict[str, set[str]]] = {
         "tasks.censys_recon",
         "tasks.graysentinel_ingest",
         "tasks.social_hunter",
+        "tasks.sherlock_hunt",
     },
     "standard": set(),
     "aggressive": set(),

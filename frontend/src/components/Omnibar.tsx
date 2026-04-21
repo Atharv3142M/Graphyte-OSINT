@@ -33,7 +33,13 @@ const TYPE_META: Record<DetectedType, { label: string; bg: string; text: string;
 };
 
 interface OmnibarProps {
-  onResult?: (playbookId: string) => void;
+  onResult?: (payload: {
+    playbookId: string;
+    target: string;
+    types: string[];
+    modules: string[];
+    moduleLabels: Record<string, string>;
+  }) => void;
   loading: boolean;
   onLoadingChange?: (v: boolean) => void;
 }
@@ -103,11 +109,23 @@ export function Omnibar({ onResult, loading, onLoadingChange }: OmnibarProps) {
         throw new Error(errData.detail ?? `Request failed with ${res.status}`);
       }
 
-      const data = await res.json() as { playbook_id: string };
+      const data = await res.json() as {
+        playbook_id: string;
+        target: string;
+        types: string[];
+        modules: string[];
+        module_labels: Record<string, string>;
+      };
       setTarget("");
       setActiveTypes([]);
       setShowAmbiguity(false);
-      onResult?.(data.playbook_id);
+      onResult?.({
+        playbookId: data.playbook_id,
+        target: data.target,
+        types: data.types,
+        modules: data.modules,
+        moduleLabels: data.module_labels ?? {},
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Investigation failed");
     } finally {

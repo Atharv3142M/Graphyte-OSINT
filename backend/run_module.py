@@ -157,6 +157,28 @@ def main() -> None:
                 max_pages=payload.get("max_pages", 50),
                 max_concurrent=payload.get("max_concurrent", 10),
             )
+        elif module_name == "ip_geolocation":
+            from backend.modules.ip_geolocation import ip_geolocation
+            result = ip_geolocation(payload.get("target", ""))
+        elif module_name == "reverse_ip_lookup":
+            from backend.modules.reverse_ip_lookup import reverse_ip_lookup
+            result = reverse_ip_lookup(payload.get("target", ""))
+        elif module_name == "bgp_asn_lookup":
+            from backend.modules.bgp_asn_lookup import bgp_asn_lookup
+            result = bgp_asn_lookup(payload.get("target", ""))
+        elif module_name == "wayback_machine":
+            from backend.modules.wayback_machine import wayback_machine_lookup
+            result = wayback_machine_lookup(payload.get("target", ""), payload.get("limit", 50))
+        elif module_name == "email_header_analyzer":
+            from backend.modules.email_header_analyzer import email_header_analyzer
+            result = email_header_analyzer(payload.get("raw_headers", ""))
+        elif module_name == "sherlock_hunt":
+            from backend.modules.sherlock_hunt import sherlock_hunt
+            result = sherlock_hunt(
+                payload.get("username", ""),
+                timeout=payload.get("timeout", 10),
+                max_connections=payload.get("max_connections", 5),
+            )
         else:
             result = {"error": f"Unknown module: {module_name}", "success": False}
     except Exception as e:

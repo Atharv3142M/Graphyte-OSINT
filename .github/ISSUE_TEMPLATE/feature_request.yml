@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a product or engineering improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: feature_type
+    attributes:
+      label: Feature type
+      options:
+        - New OSINT module
+        - UI/UX enhancement
+        - Infrastructure/DevOps
+        - Security hardening
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user pain does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

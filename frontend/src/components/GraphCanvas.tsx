@@ -127,12 +127,10 @@ export function GraphCanvas({
       }
 
       /* Build Cytoscape instance */
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cy = cytoscape({
         container: containerRef.current,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        elements: { nodes, edges } as any,
-        style: ([
+        elements: { nodes, edges } as cytoscape.ElementsDefinition,
+        style: [
           /* ── Default nodes: cyan glow ──────────────────── */
           {
             selector: "node",
@@ -211,8 +209,7 @@ export function GraphCanvas({
               width: 2,
             },
           },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ] as any),
+        ] as cytoscape.Stylesheet[],
         layout: {
           name: "cose",
           animate: nodes.length < 500,
@@ -244,6 +241,18 @@ export function GraphCanvas({
         if (evt.target === cy) onNodeSelect(null);
       });
 
+      cy.on("cxttap", "node", (evt) => {
+        const node = evt.target as NodeSingular;
+        const nodeData = node.data();
+        const menuEvent = new CustomEvent("osint-node-pivot", {
+          detail: {
+            value: nodeData.label ?? nodeData.id,
+            type: nodeData.type ?? "unknown",
+          },
+        });
+        window.dispatchEvent(menuEvent);
+      });
+
       cyRef.current = cy;
       setNodeCount(cy.nodes().length);
       setEdgeCount(cy.edges().length);
@@ -253,7 +262,7 @@ export function GraphCanvas({
     } finally {
       setLoading(false);
     }
-  }, [pruneLeaves, layoutType, onNodeSelect, graphData, setGraphData]);
+  }, [pruneLeaves, onNodeSelect, graphData, setGraphData]);
 
   /* ── Load on mount only; live graph patches use cy.add()/cy.remove() ── */
   useEffect(() => {
@@ -277,14 +286,22 @@ export function GraphCanvas({
     }
 
     /* Patch existing instance with new nodes/edges */
-    const existingNodeIds = new Set(cyRef.current.nodes().map((n) => n.id()));
-    const newNodes = graphData.nodes.filter((n) => !existingNodeIds.has(n.data?.id));
-    const newEdges = graphData.edges.filter(
-      (e) =>
-        existingNodeIds.has(e.data?.source) &&
-        existingNodeIds.has(e.data?.target) &&
-        !cyRef.current!.edges().some((ce) => (ce as cytoscape.EdgeSingular).id() === e.data?.id)
-    );
+    const cy = cyRef.current;
+    const existingNodeIds = new Set(cy.nodes().map((n) => n.id()));
+    const existingEdgeIds = new Set(cy.edges().map((e) => e.id()));
+    const newNodes = graphData.nodes.filter((n) => n?.data?.id && !existingNodeIds.has(n.data.id));
+    const newEdges = graphData.edges.filter((e) => {
+      const edgeId = e?.data?.id;
+      const source = e?.data?.source;
+      const target = e?.data?.target;
+      return Boolean(
+        source &&
+        target &&
+        existingNodeIds.has(source) &&
+        existingNodeIds.has(target) &&
+        (!edgeId || !existingEdgeIds.has(edgeId))
+      );
+    });
 
     if (newNodes.length > 0 || newEdges.length > 0) {
       const existingZoom = cyRef.current.zoom();

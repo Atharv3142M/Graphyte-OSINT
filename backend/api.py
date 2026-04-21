@@ -8,12 +8,19 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import ipaddress
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from redis import Redis
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from backend.tasks import (
     task_shodan, task_censys, task_scrape, task_port_scan,
@@ -21,6 +28,8 @@ from backend.tasks import (
     task_http_security, task_tech_stack, task_metadata_extract,
     task_graysentinel_ingest, task_cyberninja_passive, task_xrecon,
     task_social_hunter, task_cert_transparency, task_deep_scraper,
+    task_ip_geolocation, task_reverse_ip_lookup, task_bgp_asn_lookup,
+    task_wayback_machine, task_email_header_analyzer, task_sherlock_hunt,
 )
 from backend.reporting_engine import (
     generate_executive_summary,
@@ -40,6 +49,54 @@ def _log_audit(tenant_id: Optional[str], action: str, target: Optional[str] = No
 
 
 app = FastAPI(title="Unified Enterprise OSINT Platform API", version="0.1.0")
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-osint-secret-change-me")
+JWT_ALG = "HS256"
+JWT_TTL_MIN = int(os.getenv("JWT_TTL_MIN", "60"))
+AUTH_REQUIRED = os.getenv("AUTH_REQUIRED", "false").lower() in {"1", "true", "yes"}
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _create_token(subject: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {"sub": subject, "iat": int(now.timestamp()), "exp": int((now + timedelta(minutes=JWT_TTL_MIN)).timestamp())}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def _decode_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+    except JWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}")
+
+
+def require_auth(authorization: Optional[str] = Header(None, alias="Authorization")) -> Optional[str]:
+    if not AUTH_REQUIRED:
+        return "dev-anonymous"
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    payload = _decode_token(token)
+    return payload.get("sub")
+
+
+def _is_ssrf_blocked(value: str) -> bool:
+    if not value:
+        return True
+    lowered = value.lower()
+    if any(x in lowered for x in ("localhost", "127.0.0.1", "169.254.169.254")):
+        return True
+    host = lowered.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            return True
+    except ValueError:
+        pass
+    return False
 
 
 _consumer_task = None
@@ -203,6 +260,25 @@ class DeepScraperRequest(BaseModel):
     max_concurrent: int = 10
 
 
+class TargetRequest(BaseModel):
+    target: str
+
+
+class WaybackRequest(BaseModel):
+    target: str
+    limit: int = 50
+
+
+class EmailHeaderRequest(BaseModel):
+    raw_headers: str
+
+
+class SherlockRequest(BaseModel):
+    username: str
+    timeout: int = 10
+    max_connections: int = 5
+
+
 class IngestRequest(BaseModel):
     urls: list[str]
     strategies: list[str] | None = None
@@ -218,9 +294,31 @@ class AgentInvestigateRequest(BaseModel):
     thread_id: str | None = None
 
 
+class AuthLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/api/auth/login")
+@limiter.limit("10/minute")
+def auth_login(request: Request, req: AuthLoginRequest):
+    admin_user = os.getenv("OSINT_ADMIN_USER", "admin")
+    admin_hash = os.getenv("OSINT_ADMIN_PASSWORD_HASH")
+    dev_password = os.getenv("OSINT_ADMIN_PASSWORD", "admin123")
+    if req.username != admin_user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if admin_hash:
+        ok = pwd_context.verify(req.password, admin_hash)
+    else:
+        ok = req.password == dev_password
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"access_token": _create_token(req.username), "token_type": "bearer", "expires_in_minutes": JWT_TTL_MIN}
 
 
 def _publish_event(routing_key: str, payload: dict) -> None:
@@ -426,10 +524,18 @@ def api_cert_transparency(req: CertTransparencyRequest, x_tenant_id: Optional[st
 
 
 @app.post("/api/deep-scraper")
-def api_deep_scraper(req: DeepScraperRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+@limiter.limit("20/minute")
+def api_deep_scraper(
+    request: Request,
+    req: DeepScraperRequest,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _user: Optional[str] = Depends(require_auth),
+):
     """
     Deep recursive scraper extracting emails, phones, links, documents, and social profiles.
     """
+    if _is_ssrf_blocked(req.url):
+        raise HTTPException(status_code=400, detail="Blocked target by SSRF policy")
     _log_audit(x_tenant_id, "deep_scraper", req.url[:200], "initiated")
     _publish_event("osint.investigation.started", {"action": "deep_scraper", "target": req.url[:200]})
     t = task_deep_scraper.delay(req.url, req.max_depth, req.max_pages, req.max_concurrent)
@@ -439,6 +545,48 @@ def api_deep_scraper(req: DeepScraperRequest, x_tenant_id: Optional[str] = Heade
         "stream_url": f"/ws/task/{t.id}",
         "result_url": f"/api/tasks/{t.id}",
     }
+
+
+@app.post("/api/ip-geolocation")
+def api_ip_geolocation(req: TargetRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "ip_geolocation", req.target, "initiated")
+    t = task_ip_geolocation.delay(req.target)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/reverse-ip")
+def api_reverse_ip(req: TargetRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "reverse_ip_lookup", req.target, "initiated")
+    t = task_reverse_ip_lookup.delay(req.target)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/bgp-asn")
+def api_bgp_asn(req: TargetRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "bgp_asn_lookup", req.target, "initiated")
+    t = task_bgp_asn_lookup.delay(req.target)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/wayback")
+def api_wayback(req: WaybackRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "wayback_machine", req.target, "initiated")
+    t = task_wayback_machine.delay(req.target, req.limit)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/email-header")
+def api_email_header(req: EmailHeaderRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "email_header_analyzer", None, "initiated")
+    t = task_email_header_analyzer.delay(req.raw_headers)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/sherlock")
+def api_sherlock(req: SherlockRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "sherlock_hunt", req.username, "initiated")
+    t = task_sherlock_hunt.delay(req.username, req.timeout, req.max_connections)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
 
 
 @app.post("/api/ingest")
@@ -477,8 +625,24 @@ class InvestigateRequest(BaseModel):
     intensity: str = "standard"
 
 
-@app.post("/api/investigate")
-def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+class InvestigateResponse(BaseModel):
+    playbook_id: str
+    modules: list[str]
+    module_labels: dict[str, str]
+    task_ids: list[str]
+    ws_url: str
+    target: str
+    types: list[str]
+
+
+@app.post("/api/investigate", response_model=InvestigateResponse)
+@limiter.limit("30/minute")
+def api_investigate(
+    request: Request,
+    req: InvestigateRequest,
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"),
+    _user: Optional[str] = Depends(require_auth),
+):
     """
     POST /api/investigate
     Accepts a target + detected types, looks up the routing map,
@@ -491,9 +655,13 @@ def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header
 
     playbook_id = f"pb-{uuid.uuid4().hex[:12]}"
 
+    if _is_ssrf_blocked(req.target):
+        raise HTTPException(status_code=400, detail="Blocked target by SSRF policy")
+
     # Resolve task names for the detected types
     modules = get_modules_for_types(req.types, req.intensity)
     display_names = get_module_display_names(modules)
+    MODULE_LABELS = {task_name: label for task_name, label in zip(modules, display_names)}
 
     _log_audit(x_tenant_id, "playbook_investigate", req.target, "initiated")
     _publish_event("osint.investigation.started", {
@@ -518,6 +686,8 @@ def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header
             task_port_scan, task_social_hunter, task_deep_scraper,
             task_cyberninja_passive, task_xrecon, task_shodan, task_censys,
             task_graysentinel_ingest,
+            task_ip_geolocation, task_reverse_ip_lookup, task_bgp_asn_lookup,
+            task_wayback_machine, task_email_header_analyzer, task_sherlock_hunt,
         )
 
         TASK_MAP: dict[str, callable] = {
@@ -535,6 +705,12 @@ def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header
             "tasks.shodan_recon": task_shodan,
             "tasks.censys_recon": task_censys,
             "tasks.graysentinel_ingest": task_graysentinel_ingest,
+            "tasks.ip_geolocation": task_ip_geolocation,
+            "tasks.reverse_ip_lookup": task_reverse_ip_lookup,
+            "tasks.bgp_asn_lookup": task_bgp_asn_lookup,
+            "tasks.wayback_machine": task_wayback_machine,
+            "tasks.email_header_analyzer": task_email_header_analyzer,
+            "tasks.sherlock_hunt": task_sherlock_hunt,
         }
 
         # Build arguments per task based on its signature
@@ -564,11 +740,21 @@ def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header
                 return ([target], None, None)
             elif task_name == "tasks.xrecon":
                 return (target, "auto")
-            elif task_name in ("tasks.shodan_recon", "tasks.censys_recon"):
+            elif task_name == "tasks.shodan_recon":
                 return (target, None)
+            elif task_name == "tasks.censys_recon":
+                return (target, None, None)
             elif task_name == "tasks.graysentinel_ingest":
                 url = target if target.startswith("http") else f"https://{target}"
                 return ([url], None)
+            elif task_name in ("tasks.ip_geolocation", "tasks.reverse_ip_lookup", "tasks.bgp_asn_lookup"):
+                return (target,)
+            elif task_name == "tasks.wayback_machine":
+                return (target, 50)
+            elif task_name == "tasks.email_header_analyzer":
+                return (target,)
+            elif task_name == "tasks.sherlock_hunt":
+                return (target, 10, 5)
             else:
                 return (target,)
 
@@ -583,19 +769,27 @@ def api_investigate(req: InvestigateRequest, x_tenant_id: Optional[str] = Header
 
         # Store playbook plan in Redis (for WS to read initial state)
         redis = _redis()
-        plan = [
-            {"module": name, "task_id": tid, "status": "queued", "started_at": None}
-            for name, tid in zip(display_names, task_ids)
-        ]
-        redis.hset(f"osint:playbook:{playbook_id}:plan", mapping={
-            m: json.dumps({"task_id": tid, "status": "queued", "module": m})
-            for m, tid in zip(display_names, task_ids)
-        })
+        redis.hset(
+            f"osint:playbook:{playbook_id}:plan",
+            mapping={
+                module_task: json.dumps(
+                    {
+                        "task_id": tid,
+                        "status": "queued",
+                        "module": module_task,
+                        "label": MODULE_LABELS.get(module_task, module_task),
+                    }
+                )
+                for module_task, tid in zip(modules, task_ids)
+            },
+        )
         redis.expire(f"osint:playbook:{playbook_id}:plan", 3600)
 
+        module_labels = {m: MODULE_LABELS.get(m, m) for m in modules}
         return {
             "playbook_id": playbook_id,
-            "modules": display_names,
+            "modules": modules,
+            "module_labels": module_labels,
             "task_ids": task_ids,
             "ws_url": f"/ws/playbook/{playbook_id}",
             "target": req.target,
@@ -783,9 +977,7 @@ def get_playbook_plan(playbook_id: str):
     raw = redis.hgetall(f"osint:playbook:{playbook_id}:plan")
     if not raw:
         return {}
-    return {
-        k: json.loads(v) for k, v in raw.items()
-    }
+    return {k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in raw.items()}
 
 
 @app.get("/api/tasks/{task_id}")
@@ -825,14 +1017,20 @@ async def websocket_task_stream(websocket: WebSocket, task_id: str):
     loop = asyncio.get_event_loop()
 
     async def send_to_client():
+        idle_ticks = 0
         while True:
             msg = await loop.run_in_executor(
                 None,
                 lambda: pubsub.get_message(ignore_subscribe_messages=True, timeout=1),
             )
             if msg is None:
+                idle_ticks += 1
+                if idle_ticks >= 30:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    idle_ticks = 0
                 await asyncio.sleep(0.05)
                 continue
+            idle_ticks = 0
             if msg["type"] == "message":
                 try:
                     payload = msg["data"].decode("utf-8")
@@ -846,7 +1044,14 @@ async def websocket_task_stream(websocket: WebSocket, task_id: str):
     try:
         await asyncio.wait_for(send_to_client(), timeout=3600)
     except asyncio.TimeoutError:
-        pass
+        await websocket.send_text(json.dumps({"type": "done", "error": True, "reason": "stream_timeout"}))
+    finally:
+        pubsub.unsubscribe(chan)
+        pubsub.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 @app.websocket("/ws/playbook/{playbook_id}")
 async def websocket_playbook_stream(websocket: WebSocket, playbook_id: str):
     """
@@ -865,35 +1070,37 @@ async def websocket_playbook_stream(websocket: WebSocket, playbook_id: str):
 
     loop = asyncio.get_event_loop()
     done_modules: set[str] = set()
-    all_modules_raw = set()
 
     async def send_to_client():
+        idle_ticks = 0
         while True:
             msg = await loop.run_in_executor(
                 None,
                 lambda: pubsub.get_message(ignore_subscribe_messages=True, timeout=1),
             )
             if msg is None:
+                idle_ticks += 1
+                if idle_ticks >= 30:
+                    await websocket.send_text(json.dumps({"type": "ping"}))
+                    idle_ticks = 0
                 await asyncio.sleep(0.05)
                 continue
+            idle_ticks = 0
             if msg["type"] == "message":
                 try:
                     payload = msg["data"].decode("utf-8")
                     obj = json.loads(payload)
                     module = obj.get("module", "")
-                    all_modules_raw.add(module)
                     await websocket.send_text(payload)
                     if obj.get("type") == "done":
                         done_modules.add(module)
-                        if obj.get("error"):
-                            break
                 except (json.JSONDecodeError, WebSocketDisconnect):
                     break
 
     try:
         await asyncio.wait_for(send_to_client(), timeout=3600)
     except asyncio.TimeoutError:
-        pass
+        await websocket.send_text(json.dumps({"type": "done", "error": True, "reason": "stream_timeout"}))
     finally:
         pubsub.unsubscribe(chan)
         pubsub.close()

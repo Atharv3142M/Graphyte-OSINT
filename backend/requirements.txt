@@ -39,3 +39,7 @@ Pillow>=10.0.0
 PyPDF2>=3.0.0
 python-dotenv>=1.0.0
 colorama>=0.4.6
+sherlock-project>=0.15.0
+slowapi>=0.1.9
+python-jose>=3.3.0
+passlib[bcrypt]>=1.7.4

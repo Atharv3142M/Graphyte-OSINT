@@ -67,6 +67,7 @@ export interface PlaybookDispatchRequest {
 export interface PlaybookDispatchResponse {
   playbook_id: string;
   modules: string[];
+  module_labels: Record<string, string>;
   task_ids: string[];
   ws_url: string;
   target: string;
@@ -98,6 +99,7 @@ export async function dispatchPlaybook(
  */
 export interface PlaybookModulePlan {
   module: string;
+  label?: string;
   task_id: string;
   status: string;
   started_at: string | null;
@@ -124,6 +126,16 @@ export interface ModuleRequest {
   domain?: string;
   url?: string;
   file_path?: string;
+  raw_headers?: string;
+  username?: string;
+  usernames?: string[];
+  query?: string;
+  query_type?: string;
+  max_depth?: number;
+  max_pages?: number;
+  max_concurrent?: number;
+  timeout?: number;
+  limit?: number;
   ports?: number[];
   brute_subdomains?: boolean;
   brute_force?: boolean;
@@ -150,7 +162,13 @@ export type ModuleEndpoint =
   | "/api/xrecon"
   | "/api/social-hunter"
   | "/api/cert-transparency"
-  | "/api/deep-scraper";
+  | "/api/deep-scraper"
+  | "/api/ip-geolocation"
+  | "/api/reverse-ip"
+  | "/api/bgp-asn"
+  | "/api/wayback"
+  | "/api/email-header"
+  | "/api/sherlock";
 
 export async function runModule(
   endpoint: ModuleEndpoint,
@@ -346,16 +364,16 @@ export function createPlaybookStream(
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data as string) as PlaybookWSMessage;
-      const module = msg.module ?? "";
+      const moduleName = msg.module ?? "";
 
       if (msg.type === "result" && msg.data) {
-        onModuleResult(module, msg.data);
+        onModuleResult(moduleName, msg.data);
       } else if (msg.type === "done") {
-        doneModules.add(module);
-        onModuleDone(module, msg.status ?? "success", msg.error);
+        doneModules.add(moduleName);
+        onModuleDone(moduleName, msg.status ?? "success", msg.error);
         if (msg.error) {
           // If a module errors, consider the stream potentially done
-          onError?.(`module ${module} error: ${msg.error}`);
+          onError?.(`module ${moduleName} error: ${msg.error}`);
         }
       }
     } catch {

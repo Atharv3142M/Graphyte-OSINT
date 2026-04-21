@@ -10,7 +10,10 @@ from typing import Any
 
 def _connect():
     import weaviate
+    import requests
     url = os.getenv("WEAVIATE_HTTP_URI", "http://localhost:8080")
+    timeout_s = float(os.getenv("WEAVIATE_CONNECT_TIMEOUT", "5"))
+    requests.get(f"{url.rstrip('/')}/v1/.well-known/ready", timeout=timeout_s)
     host = url.replace("http://", "").replace("https://", "").split(":")[0] or "127.0.0.1"
     port = 8080
     if ":" in url.split("//")[-1]:

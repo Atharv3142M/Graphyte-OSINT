@@ -10,6 +10,7 @@ import {
   FileText,
   ScanSearch,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 
 const NAV_ITEMS: {
@@ -29,14 +30,20 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-[56px] h-full soc-panel-dense flex flex-col items-center py-3 gap-1 border-r border-slate-800">
-      {/* Logo */}
-      <div className="w-9 h-9 border border-cyan-900 bg-cyan-950/50 flex items-center justify-center mb-2">
-        <ScanSearch className="w-4 h-4 text-cyan-500" />
+    <aside className="w-[240px] h-full border-r border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-col">
+      <div className="px-4 py-4 border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-md border border-cyan-800/60 bg-cyan-900/20 flex items-center justify-center">
+            <ScanSearch className="w-4 h-4 text-cyan-300" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-slate-200">OSINT Visualizer</p>
+            <p className="text-[10px] text-slate-500">Analyst Workspace</p>
+          </div>
+        </div>
       </div>
 
-      {/* Nav items */}
-      <nav className="flex-1 flex flex-col items-center gap-0.5 w-full px-1.5">
+      <nav className="flex-1 p-3 space-y-1">
         {NAV_ITEMS.map(({ id, label, icon: Icon, href }) => {
           const isActive = pathname === href || (id === "dashboard" && pathname === "/");
           return (
@@ -44,27 +51,28 @@ export function AppSidebar() {
               key={id}
               href={href}
               className={cn(
-                "w-10 h-10 flex items-center justify-center transition-all duration-150 group relative",
+                "w-full rounded-md px-3 py-2.5 flex items-center gap-2 text-sm transition-colors",
                 isActive
-                  ? "bg-cyan-950/60 text-cyan-400 border border-cyan-900/50"
-                  : "text-slate-600 hover:text-slate-400 hover:bg-white/[0.03]"
+                  ? "bg-cyan-900/20 text-cyan-200 border border-cyan-700/40"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
               )}
             >
               <Icon className="w-4 h-4" />
-              {isActive && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-cyan-500" />
-              )}
-              {/* Tooltip */}
-              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 soc-panel text-[10px] text-slate-300 font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-                {label}
-              </div>
+              <span className="font-medium">{label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Version */}
-      <div className="text-[8px] text-slate-700 leading-none tracking-wide mt-1">v0.3</div>
+      <div className="p-3 border-t border-slate-800">
+        <div className="rounded-md border border-slate-800 bg-slate-900 px-3 py-2">
+          <div className="flex items-center gap-2 text-[11px] text-slate-300">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            Secure Analyst Mode
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1">v0.4-beta</p>
+        </div>
+      </div>
     </aside>
   );
 }

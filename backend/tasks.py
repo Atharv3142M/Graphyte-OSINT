@@ -40,6 +40,7 @@ def _spawn_and_stream(
     task_id: str,
     redis_client,
     extra_env: Optional[Dict[str, str]] = None,
+    playbook_chan: Optional[str] = None,
 ) -> dict:
     import subprocess
 
@@ -92,6 +93,11 @@ def _spawn_and_stream(
                 if text:
                     msg = json.dumps({"stream": "stdout", "data": text})
                     redis_client.publish(chan, msg)
+                    if playbook_chan:
+                        redis_client.publish(
+                            playbook_chan,
+                            json.dumps({"type": "stdout", "module": module_name, "data": text}),
+                        )
         except Exception:
             pass
 
@@ -105,6 +111,11 @@ def _spawn_and_stream(
                 if text:
                     msg = json.dumps({"stream": "stderr", "data": text})
                     redis_client.publish(chan, msg)
+                    if playbook_chan:
+                        redis_client.publish(
+                            playbook_chan,
+                            json.dumps({"type": "stderr", "module": module_name, "data": text}),
+                        )
         except Exception:
             pass
 
@@ -128,7 +139,19 @@ def _spawn_and_stream(
                 }
             ),
         )
-        redis_client.publish(chan, json.dumps({"type": "done", "killed": True}))
+        redis_client.publish(chan, json.dumps({"type": "done", "killed": True, "error": True}))
+        if playbook_chan:
+            redis_client.publish(
+                playbook_chan,
+                json.dumps(
+                    {
+                        "type": "done",
+                        "module": module_name,
+                        "status": "failure",
+                        "error": f"Task timeout (SIGKILL after {TASK_HARD_TIMEOUT}s)",
+                    }
+                ),
+            )
         return {"error": "Task timeout (SIGKILL)", "success": False}
 
     out = "\n".join(stdout_lines).strip()
@@ -138,7 +161,24 @@ def _spawn_and_stream(
         result = {"error": "Invalid JSON output", "raw": out[:500]}
 
     redis_client.publish(chan, json.dumps({"type": "result", "data": result}))
-    redis_client.publish(chan, json.dumps({"type": "done"}))
+    has_error = isinstance(result, dict) and bool(result.get("error"))
+    redis_client.publish(chan, json.dumps({"type": "done", "error": has_error}))
+    if playbook_chan:
+        redis_client.publish(
+            playbook_chan,
+            json.dumps({"type": "result", "module": module_name, "data": result}),
+        )
+        redis_client.publish(
+            playbook_chan,
+            json.dumps(
+                {
+                    "type": "done",
+                    "module": module_name,
+                    "status": "failure" if has_error else "success",
+                    "error": result.get("error") if has_error else None,
+                }
+            ),
+        )
     return result
 
 
@@ -167,6 +207,7 @@ def _run_module_subprocess(
     payload: dict,
     task_id: str,
     redis_client,
+    playbook_chan: Optional[str] = None,
 ) -> dict:
     """
     Optionally create a temporary config for sensitive modules, then spawn and stream.
@@ -182,9 +223,9 @@ def _run_module_subprocess(
                 "OSINT_CONFIG_FILE": config_path,
                 "OSINT_SERVICE": service,
             }
-            result = _spawn_and_stream(module_name, payload, task_id, redis_client, extra_env)
+            result = _spawn_and_stream(module_name, payload, task_id, redis_client, extra_env, playbook_chan)
     else:
-        result = _spawn_and_stream(module_name, payload, task_id, redis_client)
+        result = _spawn_and_stream(module_name, payload, task_id, redis_client, None, playbook_chan)
 
     # Best-effort STIX enrichment — don't fail the task if Neo4j is unavailable
     has_error = result and result.get("error")
@@ -201,10 +242,10 @@ def _run_module_subprocess(
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_shodan(self, target: str, api_key: str | None = None):
+def task_shodan(self, target: str, api_key: str | None = None, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"target": target, "api_key": api_key}
     redis_client = _get_redis()
-    return _run_module_subprocess("shodan_recon", payload, self.request.id, redis_client)
+    return _run_module_subprocess("shodan_recon", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -213,10 +254,10 @@ def task_shodan(self, target: str, api_key: str | None = None):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_censys(self, target: str, api_id: str | None = None, api_secret: str | None = None):
+def task_censys(self, target: str, api_id: str | None = None, api_secret: str | None = None, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"target": target, "api_id": api_id, "api_secret": api_secret}
     redis_client = _get_redis()
-    return _run_module_subprocess("censys_recon", payload, self.request.id, redis_client)
+    return _run_module_subprocess("censys_recon", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -225,10 +266,10 @@ def task_censys(self, target: str, api_id: str | None = None, api_secret: str | 
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_scrape(self, urls: list[str], max_workers: int = 5):
+def task_scrape(self, urls: list[str], max_workers: int = 5, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"urls": urls, "max_workers": max_workers}
     redis_client = _get_redis()
-    return _run_module_subprocess("scraper", payload, self.request.id, redis_client)
+    return _run_module_subprocess("scraper", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -243,10 +284,12 @@ def task_port_scan(
     ports: list[int] | None = None,
     max_workers: int = 20,
     timeout: float = 2.0,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
 ):
     payload = {"host": host, "ports": ports, "max_workers": max_workers, "timeout": timeout}
     redis_client = _get_redis()
-    return _run_module_subprocess("port_scanner", payload, self.request.id, redis_client)
+    return _run_module_subprocess("port_scanner", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -260,10 +303,12 @@ def task_dns_intel(
     domain: str,
     brute_subdomains: bool = False,
     wordlist: list[str] | None = None,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
 ):
     payload = {"domain": domain, "brute_subdomains": brute_subdomains, "wordlist": wordlist}
     redis_client = _get_redis()
-    return _run_module_subprocess("dns_intel", payload, self.request.id, redis_client)
+    return _run_module_subprocess("dns_intel", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -272,10 +317,10 @@ def task_dns_intel(
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_whois_lookup(self, domain: str):
+def task_whois_lookup(self, domain: str, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"domain": domain}
     redis_client = _get_redis()
-    return _run_module_subprocess("whois_lookup", payload, self.request.id, redis_client)
+    return _run_module_subprocess("whois_lookup", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -284,10 +329,10 @@ def task_whois_lookup(self, domain: str):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_ssl_analyze(self, host: str, port: int = 443, timeout: int = 10):
+def task_ssl_analyze(self, host: str, port: int = 443, timeout: int = 10, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"host": host, "port": port, "timeout": timeout}
     redis_client = _get_redis()
-    return _run_module_subprocess("ssl_analyzer", payload, self.request.id, redis_client)
+    return _run_module_subprocess("ssl_analyzer", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -296,10 +341,10 @@ def task_ssl_analyze(self, host: str, port: int = 443, timeout: int = 10):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_http_security(self, url: str, timeout: int = 10):
+def task_http_security(self, url: str, timeout: int = 10, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"url": url, "timeout": timeout}
     redis_client = _get_redis()
-    return _run_module_subprocess("http_security", payload, self.request.id, redis_client)
+    return _run_module_subprocess("http_security", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -308,10 +353,10 @@ def task_http_security(self, url: str, timeout: int = 10):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_tech_stack(self, url: str, timeout: int = 10):
+def task_tech_stack(self, url: str, timeout: int = 10, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"url": url, "timeout": timeout}
     redis_client = _get_redis()
-    return _run_module_subprocess("tech_stack", payload, self.request.id, redis_client)
+    return _run_module_subprocess("tech_stack", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -320,10 +365,10 @@ def task_tech_stack(self, url: str, timeout: int = 10):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_metadata_extract(self, file_path: str):
+def task_metadata_extract(self, file_path: str, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"file_path": file_path}
     redis_client = _get_redis()
-    return _run_module_subprocess("metadata_extractor", payload, self.request.id, redis_client)
+    return _run_module_subprocess("metadata_extractor", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -332,10 +377,10 @@ def task_metadata_extract(self, file_path: str):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_graysentinel_ingest(self, urls: list[str], strategies: list[str] | None = None):
+def task_graysentinel_ingest(self, urls: list[str], strategies: list[str] | None = None, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"urls": urls, "strategies": strategies}
     redis_client = _get_redis()
-    return _run_module_subprocess("graysentinel_pipeline", payload, self.request.id, redis_client)
+    return _run_module_subprocess("graysentinel_pipeline", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -344,10 +389,10 @@ def task_graysentinel_ingest(self, urls: list[str], strategies: list[str] | None
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_cyberninja_passive(self, usernames: list[str], timeout: float | None = None, site_list: list[str] | None = None):
+def task_cyberninja_passive(self, usernames: list[str], timeout: float | None = None, site_list: list[str] | None = None, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"usernames": usernames, "timeout": timeout, "site_list": site_list}
     redis_client = _get_redis()
-    return _run_module_subprocess("cyberninja_passive", payload, self.request.id, redis_client)
+    return _run_module_subprocess("cyberninja_passive", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -356,10 +401,10 @@ def task_cyberninja_passive(self, usernames: list[str], timeout: float | None = 
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_xrecon(self, query: str, query_type: str = "username"):
+def task_xrecon(self, query: str, query_type: str = "username", playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"query": query, "query_type": query_type}
     redis_client = _get_redis()
-    return _run_module_subprocess("xrecon", payload, self.request.id, redis_client)
+    return _run_module_subprocess("xrecon", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -368,14 +413,14 @@ def task_xrecon(self, query: str, query_type: str = "username"):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_social_hunter(self, username: str, max_concurrent: int = 20):
+def task_social_hunter(self, username: str, max_concurrent: int = 20, playbook_id: str | None = None, playbook_chan: str | None = None):
     """
     Hunt for a username across 50+ social media platforms.
     Keyless/passive - uses HTTP status code checks only.
     """
     payload = {"username": username, "max_concurrent": max_concurrent}
     redis_client = _get_redis()
-    return _run_module_subprocess("social_hunter", payload, self.request.id, redis_client)
+    return _run_module_subprocess("social_hunter", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -384,14 +429,14 @@ def task_social_hunter(self, username: str, max_concurrent: int = 20):
     soft_time_limit=TASK_HARD_TIMEOUT,
     time_limit=TASK_HARD_TIMEOUT + 10,
 )
-def task_cert_transparency(self, domain: str, use_html_fallback: bool = True):
+def task_cert_transparency(self, domain: str, use_html_fallback: bool = True, playbook_id: str | None = None, playbook_chan: str | None = None):
     """
     Discover subdomains via Certificate Transparency logs (crt.sh).
     Keyless/passive - scrapes public CT logs.
     """
     payload = {"domain": domain, "use_html_fallback": use_html_fallback}
     redis_client = _get_redis()
-    return _run_module_subprocess("cert_transparency", payload, self.request.id, redis_client)
+    return _run_module_subprocess("cert_transparency", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(
@@ -406,6 +451,8 @@ def task_deep_scraper(
     max_depth: int = 2,
     max_pages: int = 50,
     max_concurrent: int = 10,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
 ):
     """
     Deep recursive scraper extracting emails, phones, links, documents, and social profiles.
@@ -417,4 +464,83 @@ def task_deep_scraper(
         "max_concurrent": max_concurrent,
     }
     redis_client = _get_redis()
-    return _run_module_subprocess("deep_scraper", payload, self.request.id, redis_client)
+    return _run_module_subprocess("deep_scraper", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.ip_geolocation",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_ip_geolocation(self, target: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"target": target}
+    redis_client = _get_redis()
+    return _run_module_subprocess("ip_geolocation", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.reverse_ip_lookup",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_reverse_ip_lookup(self, target: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"target": target}
+    redis_client = _get_redis()
+    return _run_module_subprocess("reverse_ip_lookup", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.bgp_asn_lookup",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_bgp_asn_lookup(self, target: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"target": target}
+    redis_client = _get_redis()
+    return _run_module_subprocess("bgp_asn_lookup", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.wayback_machine",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_wayback_machine(self, target: str, limit: int = 50, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"target": target, "limit": limit}
+    redis_client = _get_redis()
+    return _run_module_subprocess("wayback_machine", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.email_header_analyzer",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_email_header_analyzer(self, raw_headers: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"raw_headers": raw_headers}
+    redis_client = _get_redis()
+    return _run_module_subprocess("email_header_analyzer", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.sherlock_hunt",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_sherlock_hunt(
+    self,
+    username: str,
+    timeout: int = 10,
+    max_connections: int = 5,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
+):
+    payload = {"username": username, "timeout": timeout, "max_connections": max_connections}
+    redis_client = _get_redis()
+    return _run_module_subprocess("sherlock_hunt", payload, self.request.id, redis_client, playbook_chan)

@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { LayoutList, SlidersHorizontal } from "lucide-react";
 import { GraphCanvas } from "@/components/GraphCanvas";
 import { NodeDetailPanel } from "@/components/NodeDetailPanel";
+import { ResultPanel } from "@/components/ResultPanel";
 import { useInvestigationStore } from "@/store/useInvestigationStore";
-import { cn } from "@/lib/utils";
 
 export default function WorkspacePage() {
+  const [resultPanelOpen, setResultPanelOpen] = useState(true);
   const selectedNode = useInvestigationStore((s) => s.selectedNode);
   const detailPanelOpen = useInvestigationStore((s) => s.detailPanelOpen);
   const pruneLeaves = useInvestigationStore((s) => s.pruneLeaves);
@@ -27,7 +29,24 @@ export default function WorkspacePage() {
 
   return (
     <div className="h-full overflow-hidden bg-slate-950 relative">
-      {/* Graph Canvas - Full Screen */}
+      <div className="absolute top-4 left-4 z-20 rounded-md border border-slate-800 bg-slate-900/90 px-3 py-2 flex items-center gap-3">
+        <p className="text-xs uppercase tracking-[0.14em] text-slate-400">Investigation Workspace</p>
+        <button
+          className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-cyan-300"
+          onClick={() => setPruneLeaves(!pruneLeaves)}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          {pruneLeaves ? "Prune On" : "Prune Off"}
+        </button>
+        <button
+          className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-cyan-300"
+          onClick={() => setResultPanelOpen((v) => !v)}
+        >
+          <LayoutList className="w-3.5 h-3.5" />
+          {resultPanelOpen ? "Hide Results" : "Show Results"}
+        </button>
+      </div>
+
       <GraphCanvas
         pruneLeaves={pruneLeaves}
         onPruneChange={setPruneLeaves}
@@ -36,24 +55,12 @@ export default function WorkspacePage() {
         className="w-full h-full"
       />
 
-      {/* Node Detail Panel */}
       <NodeDetailPanel
         node={selectedNode}
         onClose={closeDetailPanel}
         isOpen={detailPanelOpen}
       />
-
-      {/* Workspace Info Badge */}
-      <div className="absolute top-3 left-3 z-20">
-        <div className="soc-panel px-3 py-1.5 flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Graph Workspace</span>
-          </div>
-          <div className="w-px h-3 bg-slate-700" />
-          <span className="text-[9px] text-slate-600">Click nodes to inspect</span>
-        </div>
-      </div>
+      <ResultPanel isOpen={resultPanelOpen} onClose={() => setResultPanelOpen(false)} />
     </div>
   );
 }

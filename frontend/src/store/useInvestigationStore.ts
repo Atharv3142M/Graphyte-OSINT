@@ -51,6 +51,7 @@ export type ResultStatus = "pending" | "running" | "done" | "error";
 
 export interface ModuleResultEntry {
   taskId: string;
+  label?: string;
   status: ResultStatus;
   result: Record<string, unknown> | null;
   timestamp: number;
@@ -117,7 +118,12 @@ interface InvestigationStore {
   setPruneLeaves: (v: boolean) => void;
 
   /* Playbook result store actions */
-  initPlaybook: (playbookId: string, target: string, types: string[], plan: Record<string, { module: string; task_id: string; status: string }>) => void;
+  initPlaybook: (
+    playbookId: string,
+    target: string,
+    types: string[],
+    plan: Record<string, { module: string; task_id: string; status: string; label?: string }>
+  ) => void;
   setModuleStatus: (playbookId: string, module: string, status: ResultStatus, error?: string) => void;
   setModuleResult: (playbookId: string, module: string, data: Record<string, unknown>) => void;
   clearPlaybook: (playbookId: string) => void;
@@ -182,6 +188,7 @@ export const useInvestigationStore = create<InvestigationStore>((set) => ({
         const modName = entry.module ?? _modKey;
         modules[modName] = {
           taskId: entry.task_id,
+          label: entry.label ?? modName,
           status: (entry.status as ResultStatus) ?? "pending",
           result: null,
           timestamp: Date.now(),

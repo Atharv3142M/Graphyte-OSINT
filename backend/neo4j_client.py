@@ -14,7 +14,13 @@ class Neo4jClient:
         uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         user = os.getenv("NEO4J_USER", "neo4j")
         password = os.getenv("NEO4J_PASSWORD", "dev_neo4j_secret")
-        self._driver: Driver = GraphDatabase.driver(uri, auth=(user, password))
+        timeout_s = float(os.getenv("NEO4J_CONNECT_TIMEOUT", "5"))
+        self._driver: Driver = GraphDatabase.driver(
+            uri,
+            auth=(user, password),
+            connection_timeout=timeout_s,
+            max_connection_lifetime=60,
+        )
 
     def close(self) -> None:
         self._driver.close()

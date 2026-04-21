@@ -1,0 +1,41 @@
+name: Module submission
+description: Propose or submit a new OSINT module
+title: "[Module]: "
+labels: ["module"]
+body:
+  - type: input
+    id: module_name
+    attributes:
+      label: Module name
+      placeholder: wayback_machine
+    validations:
+      required: true
+  - type: textarea
+    id: datasource
+    attributes:
+      label: Data source(s)
+      description: APIs, public datasets, scraping target, or local analysis
+    validations:
+      required: true
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Supported input types
+      placeholder: domain, url, ipv4, email, username
+    validations:
+      required: true
+  - type: textarea
+    id: output_shape
+    attributes:
+      label: Example output shape
+      description: Provide JSON-like output so maintainers can map to STIX
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: stix_mapping
+    attributes:
+      label: Proposed STIX mapping
+      description: Object types and relationships
+    validations:
+      required: true

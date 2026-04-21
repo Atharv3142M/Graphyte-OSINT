@@ -423,7 +423,7 @@ function GenericResult({ data }: { data: Record<string, unknown> }) {
 
 function ResultRenderer({ module, result }: { module: string; result: Record<string, unknown> | null }) {
   if (!result) return <div className="text-xs text-slate-600 font-mono">Waiting for data…</div>;
-  const m = module.toLowerCase().replace(/ /g, "_");
+  const m = module.toLowerCase().replace(/^tasks\./, "").replace(/ /g, "_");
   switch (m) {
     case "dns_intel": case "dns": return <DNSTable data={result} />;
     case "ssl_analyzer": case "ssl": return <SSLCard data={result} />;
@@ -445,6 +445,11 @@ function ResultRenderer({ module, result }: { module: string; result: Record<str
 
 /* ── Module section row ─────────────────────────────────── */
 
+function humanizeModule(module: string, label?: string): string {
+  if (label) return label;
+  return module.replace(/^tasks\./, "").replace(/_/g, " ").replace(/-/g, " ");
+}
+
 function ModuleSection({ module, entry }: { module: string; entry: ModuleResultEntry }) {
   const [open, setOpen] = useState<boolean>(false);
   const isDone = entry.status === "done" || entry.status === "error";
@@ -457,7 +462,7 @@ function ModuleSection({ module, entry }: { module: string; entry: ModuleResultE
       >
         <StatusRing status={entry.status} />
         <span className="text-xs font-mono text-slate-300 flex-1">
-          {module.replace(/_/g, " ").replace(/-/g, " ")}
+          {humanizeModule(module, entry.label)}
         </span>
         {entry.result && Object.keys(entry.result).length > 0 && (
           <span className="text-[10px] text-slate-600 font-mono">1 result</span>

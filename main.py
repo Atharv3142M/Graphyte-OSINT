@@ -12,6 +12,7 @@ All logs are multiplexed with colored prefixes. Ctrl+C stops everything cleanly.
 from __future__ import annotations
 
 import os
+import argparse
 import signal
 import subprocess
 import sys
@@ -109,6 +110,9 @@ def _stream_output(name: str, color: str, proc: subprocess.Popen) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Unified OSINT Platform orchestrator")
+    parser.add_argument("--lite", action="store_true", help="Run API + frontend without Celery worker")
+    args = parser.parse_args()
     print("Unified OSINT Platform - Master Orchestrator")
     print("=" * 72)
 
@@ -117,6 +121,8 @@ def main() -> int:
     os.chdir(ROOT)
     print(f"[INFO] Working directory: {ROOT}")
     print(f"[INFO] Platform: {os.name}")
+    if args.lite:
+        print("[INFO] Lite mode enabled: Celery worker disabled")
 
     # Commands
     py = _detect_python()
@@ -135,7 +141,8 @@ def main() -> int:
 
     try:
         procs["FASTAPI"] = _spawn("FASTAPI", uvicorn_cmd, cwd=ROOT)
-        procs["CELERY"] = _spawn("CELERY", celery_cmd, cwd=ROOT)
+        if not args.lite:
+            procs["CELERY"] = _spawn("CELERY", celery_cmd, cwd=ROOT)
         # On Windows, next_cmd is a string and needs shell=True
         if os.name == "nt":
             procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT, use_shell=True)  # type: ignore[arg-type]
@@ -148,17 +155,21 @@ def main() -> int:
             args=("FASTAPI", FASTAPI_COLOR, procs["FASTAPI"]),
             daemon=True,
         )
-        t_celery = threading.Thread(
-            target=_stream_output,
-            args=("CELERY", CELERY_COLOR, procs["CELERY"]),
-            daemon=True,
-        )
+        t_celery = None
+        if "CELERY" in procs:
+            t_celery = threading.Thread(
+                target=_stream_output,
+                args=("CELERY", CELERY_COLOR, procs["CELERY"]),
+                daemon=True,
+            )
         t_next = threading.Thread(
             target=_stream_output,
             args=("NEXTJS", NEXT_COLOR, procs["NEXTJS"]),
             daemon=True,
         )
-        threads.extend([t_fastapi, t_celery, t_next])
+        threads.extend([t_fastapi, t_next])
+        if t_celery:
+            threads.append(t_celery)
         for t in threads:
             t.start()
 

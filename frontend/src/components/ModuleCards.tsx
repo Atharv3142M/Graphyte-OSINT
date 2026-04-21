@@ -14,6 +14,12 @@ import {
   Network,
   ScanSearch,
   AtSign,
+  MapPin,
+  Route,
+  Radar,
+  Archive,
+  MailSearch,
+  UserSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { runModule, WS_BASE, type ModuleEndpoint } from "@/lib/api";
@@ -132,6 +138,57 @@ const MODULES: ModuleDef[] = [
     fields: [
       { name: "file_path", label: "File Path", placeholder: "/path/to/image.jpg", type: "text", required: true },
     ],
+  },
+  {
+    id: "ip-geolocation",
+    label: "IP Geolocation",
+    description: "Locate IP geodata, ASN, ISP and proxy/hosting indicators.",
+    icon: MapPin,
+    endpoint: "/api/ip-geolocation",
+    fields: [{ name: "target", label: "Target", placeholder: "8.8.8.8 or example.com", type: "text", required: true }],
+  },
+  {
+    id: "reverse-ip",
+    label: "Reverse IP",
+    description: "List co-hosted domains on the same IP.",
+    icon: Route,
+    endpoint: "/api/reverse-ip",
+    fields: [{ name: "target", label: "Target", placeholder: "8.8.8.8 or domain", type: "text", required: true }],
+  },
+  {
+    id: "bgp-asn",
+    label: "BGP / ASN",
+    description: "BGPView enrichment for IP or ASN intelligence.",
+    icon: Radar,
+    endpoint: "/api/bgp-asn",
+    fields: [{ name: "target", label: "Target", placeholder: "AS15169 or 1.1.1.1", type: "text", required: true }],
+  },
+  {
+    id: "wayback",
+    label: "Wayback Machine",
+    description: "Historical snapshot enumeration via Archive CDX.",
+    icon: Archive,
+    endpoint: "/api/wayback",
+    fields: [
+      { name: "target", label: "Target", placeholder: "example.com", type: "text", required: true },
+      { name: "limit", label: "Limit", placeholder: "50", type: "number", defaultValue: 50 },
+    ],
+  },
+  {
+    id: "email-header",
+    label: "Email Header Analyzer",
+    description: "Parse headers for hops, SPF/DKIM/DMARC and origin IPs.",
+    icon: MailSearch,
+    endpoint: "/api/email-header",
+    fields: [{ name: "raw_headers", label: "Raw Headers", placeholder: "Paste RFC822 headers", type: "text", required: true }],
+  },
+  {
+    id: "sherlock",
+    label: "Sherlock",
+    description: "Deep username hunt across hundreds of platforms.",
+    icon: UserSearch,
+    endpoint: "/api/sherlock",
+    fields: [{ name: "username", label: "Username", placeholder: "torvalds", type: "text", required: true }],
   },
 ];
 
