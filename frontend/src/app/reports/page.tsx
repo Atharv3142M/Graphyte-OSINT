@@ -134,31 +134,29 @@ export default function ReportsPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-950">
-      <div className="p-4 max-w-5xl mx-auto space-y-3">
-        {/* Header */}
-        <div>
-          <h1 className="text-sm font-semibold text-slate-100 uppercase tracking-widest">Reports</h1>
-          <p className="text-[10px] text-slate-600 mt-0.5">
-            Generate and export investigation reports from accumulated STIX 2.1 data
+      <div className="p-7 max-w-6xl mx-auto space-y-5">
+        <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-6">
+          <h1 className="text-2xl font-semibold text-slate-100">Reports & Exports</h1>
+          <p className="text-sm text-slate-400 mt-2">
+            Generate executive, technical, and machine-readable outputs from normalized investigation data.
           </p>
         </div>
 
-        {/* Current Investigation Summary */}
-        <div className="soc-panel p-4">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
           <div className="flex items-center gap-2 mb-3">
             <Shield className="w-3 h-3 text-cyan-600" />
             <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Current Investigation</h2>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <div className="border border-slate-800 p-3 bg-slate-950/50">
+            <div className="rounded-lg border border-slate-800 p-3 bg-slate-950/50">
               <div className="text-lg font-bold text-cyan-400 font-mono">{nodeCount}</div>
               <div className="text-[9px] text-slate-600 uppercase tracking-wider mt-0.5">Entities</div>
             </div>
-            <div className="border border-slate-800 p-3 bg-slate-950/50">
+            <div className="rounded-lg border border-slate-800 p-3 bg-slate-950/50">
               <div className="text-lg font-bold text-violet-400 font-mono">{edgeCount}</div>
               <div className="text-[9px] text-slate-600 uppercase tracking-wider mt-0.5">Relationships</div>
             </div>
-            <div className="border border-slate-800 p-3 bg-slate-950/50">
+            <div className="rounded-lg border border-slate-800 p-3 bg-slate-950/50">
               <div className="text-lg font-bold text-amber-400 font-mono">{streamLog.length}</div>
               <div className="text-[9px] text-slate-600 uppercase tracking-wider mt-0.5">Log Entries</div>
             </div>
@@ -170,7 +168,6 @@ export default function ReportsPage() {
           )}
         </div>
 
-        {/* Report Templates */}
         <div>
           <h2 className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-2">Available Reports</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -199,7 +196,7 @@ function ReportCard({
   const Icon = template.icon;
 
   return (
-    <div className="soc-panel p-4 flex flex-col gap-3">
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 border border-cyan-900 bg-cyan-950/50 flex items-center justify-center">

@@ -24,6 +24,47 @@ function headers(): HeadersInit {
   };
 }
 
+function candidateApiBases(): string[] {
+  const bases = new Set<string>();
+  const envBase = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (envBase) bases.add(envBase);
+  bases.add(API_BASE);
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    const host = window.location.hostname || "localhost";
+    bases.add(`${protocol}//${host}:8000`);
+    bases.add(`${protocol}//${host}:8001`);
+    bases.add(`${protocol}//localhost:8000`);
+    bases.add(`${protocol}//localhost:8001`);
+    bases.add(`${protocol}//127.0.0.1:8000`);
+    bases.add(`${protocol}//127.0.0.1:8001`);
+  }
+  return Array.from(bases);
+}
+
+async function fetchWithFallback(path: string, init?: RequestInit): Promise<Response> {
+  const bases = candidateApiBases();
+  let lastError: unknown = null;
+
+  for (const base of bases) {
+    try {
+      const res = await fetch(`${base}${path}`, init);
+      if (res.status === 404 && bases.length > 1) continue;
+      return res;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw new Error(
+    `NetworkError when attempting to fetch resource. Checked API endpoints: ${bases.join(", ")}. ${String(lastError ?? "")}`.trim()
+  );
+}
+
+function candidateWsBases(): string[] {
+  return candidateApiBases().map((b) => b.replace(/^http/, "ws"));
+}
+
 /* ── Investigation ──────────────────────────────────────── */
 
 export interface InvestigateRequest {
@@ -44,7 +85,7 @@ export async function investigate(
   goal: string,
   threadId?: string
 ): Promise<InvestigateResponse> {
-  const res = await fetch(`${API_BASE}/api/agent/investigate`, {
+  const res = await fetchWithFallback(`/api/agent/investigate`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({ goal, thread_id: threadId }),
@@ -79,7 +120,7 @@ export async function dispatchPlaybook(
   types: string[],
   intensity: string = "standard"
 ): Promise<PlaybookDispatchResponse> {
-  const res = await fetch(`${API_BASE}/api/investigate`, {
+  const res = await fetchWithFallback(`/api/investigate`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify({ target, types, intensity }),
@@ -108,7 +149,7 @@ export interface PlaybookModulePlan {
 export async function getPlaybookPlan(
   playbookId: string
 ): Promise<Record<string, PlaybookModulePlan>> {
-  const res = await fetch(`${API_BASE}/api/playbook/${playbookId}/plan`, {
+  const res = await fetchWithFallback(`/api/playbook/${playbookId}/plan`, {
     headers: headers(),
   });
   if (!res.ok) {
@@ -174,7 +215,7 @@ export async function runModule(
   endpoint: ModuleEndpoint,
   body: ModuleRequest
 ): Promise<ModuleResponse> {
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  const res = await fetchWithFallback(`${endpoint}`, {
     method: "POST",
     headers: headers(),
     body: JSON.stringify(body),
@@ -189,7 +230,7 @@ export async function runModule(
 /* ── Graph ─────────────────────────────────────────────── */
 
 export async function fetchGraph(): Promise<GraphData> {
-  const res = await fetch(`${API_BASE}/api/graph`, {
+  const res = await fetchWithFallback(`/api/graph`, {
     headers: headers(),
     cache: "no-store",
   });
@@ -212,7 +253,7 @@ export interface TaskStatus {
 }
 
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+  const res = await fetchWithFallback(`/api/tasks/${taskId}`, {
     headers: headers(),
   });
   if (!res.ok) throw new Error(`Task status returned ${res.status}`);
@@ -235,48 +276,58 @@ export function createTaskStream(
   onError?: (err: string) => void,
   onStatusChange?: (status: "pending" | "started" | "success" | "failure") => void,
 ): WebSocket {
-  const ws = new WebSocket(`${WS_BASE}/ws/task/${taskId}`);
+  const wsBases = candidateWsBases();
+  let ws = new WebSocket(`${wsBases[0] || WS_BASE}/ws/task/${taskId}`);
+  let wsIndex = 0;
   let wsConnected = false;
   let doneFired = false;
   let fallbackStarted = false;
 
-  ws.onopen = () => {
-    wsConnected = true;
-    onStatusChange?.("started");
-  };
+  const bind = (socket: WebSocket) => {
+    socket.onopen = () => {
+      wsConnected = true;
+      onStatusChange?.("started");
+    };
 
-  ws.onmessage = (ev) => {
-    try {
-      const parsed = JSON.parse(ev.data as string) as Record<string, unknown>;
-      onMessage(ev.data as string, parsed);
+    socket.onmessage = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.data as string) as Record<string, unknown>;
+        onMessage(ev.data as string, parsed);
 
-      if (parsed?.type === "done" && !doneFired) {
-        doneFired = true;
-        ws.close();
-        const result = parsed?.data ?? parsed?.result ?? undefined;
-        onDone?.(result);
-      }
-
-      if (parsed?.type === "result" && parsed?.status) {
-        const status = String(parsed.status).toLowerCase();
-        if (status === "success" || status === "failure" || status === "started" || status === "pending") {
-          onStatusChange?.(status as "pending" | "started" | "success" | "failure");
+        if (parsed?.type === "done" && !doneFired) {
+          doneFired = true;
+          socket.close();
+          const result = parsed?.data ?? parsed?.result ?? undefined;
+          onDone?.(result);
         }
+
+        if (parsed?.type === "result" && parsed?.status) {
+          const status = String(parsed.status).toLowerCase();
+          if (status === "success" || status === "failure" || status === "started" || status === "pending") {
+            onStatusChange?.(status as "pending" | "started" | "success" | "failure");
+          }
+        }
+      } catch {
+        onMessage(ev.data as string, null);
       }
-    } catch {
-      onMessage(ev.data as string, null);
-    }
-  };
+    };
 
-  ws.onerror = () => {
-    if (!wsConnected && !fallbackStarted) {
-      fallbackStarted = true;
-      pollTaskResult(taskId, onDone, onStatusChange);
-    }
-    onError?.("WebSocket connection error");
+    socket.onerror = () => {
+      if (!wsConnected && wsIndex + 1 < wsBases.length) {
+        wsIndex += 1;
+        ws = new WebSocket(`${wsBases[wsIndex]}/ws/task/${taskId}`);
+        bind(ws);
+        return;
+      }
+      if (!wsConnected && !fallbackStarted) {
+        fallbackStarted = true;
+        pollTaskResult(taskId, onDone, onStatusChange);
+      }
+      onError?.("WebSocket connection error");
+    };
+    socket.onclose = () => {};
   };
-
-  ws.onclose = () => {};
+  bind(ws);
 
   setTimeout(() => {
     if (!wsConnected && !fallbackStarted) {
@@ -357,37 +408,65 @@ export function createPlaybookStream(
   onModuleDone: (module: string, status: string, error?: string) => void,
   onAllDone?: () => void,
   onError?: (err: string) => void,
+  expectedModules?: string[],
+  onStreamLog?: (module: string, text: string) => void,
 ): WebSocket {
-  const ws = new WebSocket(`${WS_BASE}/ws/playbook/${playbookId}`);
+  const wsBases = candidateWsBases();
+  let ws = new WebSocket(`${wsBases[0] || WS_BASE}/ws/playbook/${playbookId}`);
+  let wsIndex = 0;
+  let wsConnected = false;
   const doneModules = new Set<string>();
+  const expected = new Set((expectedModules ?? []).map((m) => (m.startsWith("tasks.") ? m : `tasks.${m}`)));
+  const canonical = (m: string) => (m.startsWith("tasks.") ? m : `tasks.${m}`);
 
-  ws.onmessage = (ev) => {
-    try {
-      const msg = JSON.parse(ev.data as string) as PlaybookWSMessage;
-      const moduleName = msg.module ?? "";
+  const bind = (socket: WebSocket) => {
+    socket.onopen = () => {
+      wsConnected = true;
+    };
+    socket.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data as string) as PlaybookWSMessage;
+        const moduleName = canonical(msg.module ?? "");
 
-      if (msg.type === "result" && msg.data) {
-        onModuleResult(moduleName, msg.data);
-      } else if (msg.type === "done") {
-        doneModules.add(moduleName);
-        onModuleDone(moduleName, msg.status ?? "success", msg.error);
-        if (msg.error) {
-          // If a module errors, consider the stream potentially done
-          onError?.(`module ${moduleName} error: ${msg.error}`);
+        if (msg.type === "result" && msg.data) {
+          onModuleResult(moduleName, msg.data);
+        } else if (msg.type === "stdout" || msg.type === "stderr") {
+          if (msg.data && typeof msg.data === "string") {
+            onStreamLog?.(moduleName, msg.data);
+          } else {
+             // Fallback if data is a dict somehow, though backend sends text string data for stdout/stderr
+            onStreamLog?.(moduleName, String(msg.data));
+          }
+        } else if (msg.type === "done") {
+          doneModules.add(moduleName);
+          onModuleDone(moduleName, msg.status ?? "success", msg.error);
+          if (expected.size > 0 && doneModules.size >= expected.size) {
+            onAllDone?.();
+          }
+          if (msg.error) {
+            onError?.(`module ${moduleName} error: ${msg.error}`);
+          }
         }
+      } catch {
+        // Ignore parse errors
       }
-    } catch {
-      // Ignore parse errors
-    }
+    };
+    socket.onerror = () => {
+      if (!wsConnected && wsIndex + 1 < wsBases.length) {
+        wsIndex += 1;
+        ws = new WebSocket(`${wsBases[wsIndex]}/ws/playbook/${playbookId}`);
+        bind(ws);
+        return;
+      }
+      onError?.("Playbook WebSocket error");
+    };
+    socket.onclose = () => {
+      if (expected.size === 0 || doneModules.size >= expected.size) {
+        onAllDone?.();
+      }
+    };
   };
-
-  ws.onerror = () => {
-    onError?.("Playbook WebSocket error");
-  };
-
-  ws.onclose = () => {
-    onAllDone?.();
-  };
+  bind(ws);
 
   return ws;
 }

@@ -29,13 +29,13 @@ def _load_service_config() -> Dict[str, Any]:
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "Module name required"}), file=sys.stderr)
+        print(json.dumps({"error": "Module name required", "success": False}))
         sys.exit(1)
     module_name = sys.argv[1]
     try:
         payload = json.loads(sys.stdin.read())
     except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"Invalid JSON stdin: {e}"}), file=sys.stderr)
+        print(json.dumps({"error": f"Invalid JSON stdin: {e}", "success": False}))
         sys.exit(1)
 
     service_config = _load_service_config()
@@ -98,12 +98,6 @@ def main() -> None:
             result = xrecon_search(
                 payload.get("query", ""),
                 payload.get("query_type", "username"),
-            )
-        elif module_name == "graysentinel_pipeline":
-            from backend.modules.graysentinel_pipeline import run_pipeline
-            result = run_pipeline(
-                payload.get("urls", []),
-                payload.get("strategies"),
             )
         elif module_name == "dns_intel":
             from backend.modules.dns_intel import dns_recon

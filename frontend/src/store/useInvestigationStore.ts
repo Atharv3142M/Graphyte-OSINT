@@ -242,7 +242,7 @@ export const useInvestigationStore = create<InvestigationStore>((set) => ({
               [module]: {
                 ...mod,
                 result: data,
-                status: "done" as ResultStatus,
+                status: mod.status === "pending" ? ("running" as ResultStatus) : mod.status,
                 timestamp: Date.now(),
               },
             },

@@ -5,6 +5,9 @@ Uses Redis as broker. Configure via CELERY_BROKER_URL / REDIS_URL.
 from __future__ import annotations
 
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from celery import Celery
 

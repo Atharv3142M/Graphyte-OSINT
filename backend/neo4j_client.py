@@ -3,10 +3,34 @@ Thin Neo4j client for ingesting STIX-like objects into a queryable graph.
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Any, Dict, Iterable
 
 from neo4j import GraphDatabase, Driver
+
+
+def _neo4j_safe_value(v: Any) -> Any:
+    # Neo4j properties must be primitives or arrays of primitives.
+    if v is None or isinstance(v, (str, int, float, bool)):
+        return v
+    if isinstance(v, (list, tuple)):
+        if all(isinstance(x, (str, int, float, bool)) or x is None for x in v):
+            return list(v)
+        return json.dumps(v, ensure_ascii=False)[:100_000]
+    if isinstance(v, dict):
+        return json.dumps(v, ensure_ascii=False)[:100_000]
+    return str(v)[:10_000]
+
+
+def _neo4j_safe_props(props: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in props.items():
+        try:
+            out[k] = _neo4j_safe_value(v)
+        except Exception:
+            out[k] = str(v)
+    return out
 
 
 class Neo4jClient:
@@ -37,7 +61,7 @@ class Neo4jClient:
             for obj in objects:
                 session.execute_write(_merge_object, obj)
 
-    def get_graph_cytoscape(self) -> Dict[str, Any]:
+    def get_graph_cytoscape(self, limit: int = 50) -> Dict[str, Any]:
         """
         Fetch all Stix nodes and relationships as Cytoscape elements format.
         Returns { elements: { nodes: [...], edges: [...] } }.
@@ -45,7 +69,7 @@ class Neo4jClient:
         nodes_out: list[Dict[str, Any]] = []
         edges_out: list[Dict[str, Any]] = []
         with self._driver.session() as session:
-            nodes_result = session.run("MATCH (n:Stix) RETURN n")
+            nodes_result = session.run("MATCH (n:Stix) RETURN n ORDER BY n.created DESC LIMIT $limit", limit=limit)
             for record in nodes_result:
                 node = record["n"]
                 if node is None:
@@ -63,7 +87,8 @@ class Neo4jClient:
                     "classes": stix_type.replace("-", "_"),
                 })
             edges_result = session.run(
-                "MATCH (a:Stix)-[r]->(b:Stix) RETURN a.id AS src, b.id AS tgt, id(r) AS rid"
+                "MATCH (a:Stix)-[r]->(b:Stix) RETURN a.id AS src, b.id AS tgt, elementId(r) AS rid LIMIT $limit",
+                limit=limit * 3
             )
             for record in edges_result:
                 src = record.get("src")
@@ -83,7 +108,8 @@ def _merge_object(tx, obj: Dict[str, Any]) -> None:
 
     # Separate STIX properties from relationship fields
     relationship_fields = {"source_ref", "target_ref", "relationship_type", "created", "modified"}
-    props = {k: v for k, v in obj.items() if k not in {"id", "type"} and k not in relationship_fields}
+    raw_props = {k: v for k, v in obj.items() if k not in {"id", "type"} and k not in relationship_fields}
+    props = _neo4j_safe_props(raw_props)
 
     # Merge the node itself
     tx.run(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { LayoutList, SlidersHorizontal } from "lucide-react";
+import { LayoutList, SlidersHorizontal, Focus, Filter } from "lucide-react";
 import { GraphCanvas } from "@/components/GraphCanvas";
 import { NodeDetailPanel } from "@/components/NodeDetailPanel";
 import { ResultPanel } from "@/components/ResultPanel";
@@ -29,13 +29,13 @@ export default function WorkspacePage() {
 
   return (
     <div className="h-full overflow-hidden bg-slate-950 relative">
-      <div className="absolute top-4 left-4 z-20 rounded-md border border-slate-800 bg-slate-900/90 px-3 py-2 flex items-center gap-3">
+      <div className="absolute top-4 left-4 z-20 rounded-xl border border-slate-800 bg-slate-900/95 px-3 py-2.5 flex items-center gap-3">
         <p className="text-xs uppercase tracking-[0.14em] text-slate-400">Investigation Workspace</p>
         <button
           className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-cyan-300"
           onClick={() => setPruneLeaves(!pruneLeaves)}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <Filter className="w-3.5 h-3.5" />
           {pruneLeaves ? "Prune On" : "Prune Off"}
         </button>
         <button
@@ -45,6 +45,9 @@ export default function WorkspacePage() {
           <LayoutList className="w-3.5 h-3.5" />
           {resultPanelOpen ? "Hide Results" : "Show Results"}
         </button>
+        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+          <Focus className="w-3 h-3" /> Graph focus mode
+        </span>
       </div>
 
       <GraphCanvas

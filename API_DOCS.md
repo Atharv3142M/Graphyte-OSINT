@@ -1,54 +1,52 @@
-# Unified Enterprise OSINT Platform – API Reference
+# API Reference
 
-**Version:** 0.1.0 (Phase 8 - Keyless Backend + Multi-Route Dashboard)
-**Last Updated:** 2026-03-29
+Base URL: `http://localhost:8000` (runtime may use a fallback port if `8000` is occupied).
 
-Base URL: `http://localhost:8000` (configurable via `NEXT_PUBLIC_API_URL` in frontend)
+## Headers
 
-## Authentication
+All platform endpoints accept:
 
-All API endpoints require the `X-Tenant-ID` header for multi-tenant isolation:
-
-```
+```http
 X-Tenant-ID: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+Content-Type: application/json
 ```
 
-Default tenant UUID is seeded automatically by `verify.py` or `seed_db.py`.
+## Health and platform endpoints
 
-## REST Endpoints
+- `GET /health`
+- `GET /api/graph`
+- `GET /api/tasks/{task_id}`
+- `GET /api/playbook/{playbook_id}/plan`
+- `POST /api/investigate` (playbook dispatch)
+- `POST /api/agent/investigate` (agent-driven flow)
 
-### Health
+## OSINT module endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
+The following enqueue Celery-backed tasks and return a task envelope:
 
-**Response:** `{"status": "ok"}`
+- `POST /api/dns-intel`
+- `POST /api/whois`
+- `POST /api/ssl-analyze`
+- `POST /api/http-security`
+- `POST /api/tech-stack`
+- `POST /api/metadata-extract`
+- `POST /api/port-scan`
+- `POST /api/social-hunter`
+- `POST /api/cert-transparency`
+- `POST /api/deep-scraper`
+- `POST /api/ip-geolocation`
+- `POST /api/reverse-ip`
+- `POST /api/bgp-asn`
+- `POST /api/wayback`
+- `POST /api/email-header`
+- `POST /api/sherlock`
+- `POST /api/shodan`
+- `POST /api/censys`
+- `POST /api/cyberninja`
+- `POST /api/xrecon`
 
----
+### Standard task enqueue response
 
-### Task-Based Endpoints (Celery + WebSocket)
-
-These endpoints enqueue a Celery task and return a `task_id`. Use the WebSocket to stream stdout/stderr, or poll `GET /api/tasks/{task_id}` for the final result.
-
-| Method | Endpoint | Request Body | Description |
-|--------|----------|--------------|-------------|
-| POST | `/api/shodan` | `{ "target": string, "api_key"?: string }` | Shodan host/domain recon |
-| POST | `/api/censys` | `{ "target": string, "api_id"?: string, "api_secret"?: string }` | Censys host recon |
-| POST | `/api/scrape` | `{ "urls": string[], "max_workers"?: number }` | Scrape URLs for emails/phones |
-| POST | `/api/port-scan` | `{ "host": string, "ports"?: number[], "max_workers"?: number, "timeout"?: number }` | TCP port scan |
-| POST | `/api/dns-intel` | `{ "domain": string, "brute_subdomains"?: boolean, "wordlist"?: string[] }` | DNS reconnaissance (A, AAAA, MX, NS, TXT, SPF/DMARC parsing, subdomain discovery) |
-| POST | `/api/whois` | `{ "domain": string }` | WHOIS domain lookup |
-| POST | `/api/ssl-analyze` | `{ "host": string, "port"?: number, "timeout"?: number }` | SSL/TLS certificate analysis |
-| POST | `/api/http-security` | `{ "url": string, "timeout"?: number }` | HTTP security headers audit |
-| POST | `/api/tech-stack` | `{ "url": string, "timeout"?: number }` | Technology stack detection |
-| POST | `/api/cyberninja` | `{ "usernames": string[], "timeout"?: number, "site_list"?: string[] }` | Username enumeration across platforms |
-| POST | `/api/xrecon` | `{ "query": string, "query_type"?: "username"|"email"|"domain" }` | Cross-platform reconnaissance |
-| POST | `/api/social-hunter` | `{ "username": string, "max_concurrent"?: number }` | Social media presence check (50+ platforms) |
-| POST | `/api/cert-transparency` | `{ "domain": string, "use_html_fallback"?: boolean }` | Subdomain discovery via CT logs |
-| POST | `/api/deep-scraper` | `{ "url": string, "max_depth"?: number, "max_pages"?: number }` | Recursive deep web scraping |
-
-**Response (all task endpoints):**
 ```json
 {
   "task_id": "uuid",
@@ -58,106 +56,33 @@ These endpoints enqueue a Celery task and return a `task_id`. Use the WebSocket 
 }
 ```
 
----
+## Normalized result envelope
 
-### Synchronous Endpoints
+Module results are standardized before frontend rendering:
 
-| Method | Endpoint | Request Body | Description |
-|--------|----------|--------------|-------------|
-| POST | `/api/ingest` | `{ "urls": string[], "strategies"?: string[] }` | GraySentinel pipeline: scrape, chunk, NER, embed, store in Weaviate |
-| POST | `/api/semantic-search` | `{ "query": string, "limit"?: number }` | Natural-language semantic search (cosine similarity) |
-| POST | `/api/agent/investigate` | `{ "goal": string, "thread_id"?: string }` | LangGraph multi-agent investigation |
-
-**POST /api/ingest Response:**
 ```json
 {
-  "success": true,
-  "ingested": 42,
-  "urls": ["https://..."]
+  "ok": true,
+  "module": "dns_intel",
+  "summary": { "title": "DNS Intel: example.com", "stats": [], "badges": [] },
+  "artifacts": { "ips": [], "domains": [], "urls": [], "emails": [], "usernames": [], "asns": [] },
+  "tables": [],
+  "raw": {},
+  "errors": []
 }
 ```
 
-**POST /api/semantic-search Response:**
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "content": "...",
-      "source_url": "...",
-      "chunk_strategy": "context_aware",
-      "named_entities": ["..."],
-      "distance": 0.23
-    }
-  ]
-}
-```
+## WebSocket streams
 
-**POST /api/agent/investigate Response:**
-```json
-{
-  "success": true,
-  "thread_id": "inv-abc123",
-  "summary": { "goal": "...", "discovered_ips": [...], "threat_score": 0.65, ... },
-  "threat_score": 0.65,
-  "stix_bundle": { "type": "bundle", "objects": [...] },
-  "investigation_context": [...]
-}
-```
+### Task stream
 
----
+`ws://<api-host>/ws/task/{task_id}`
 
-### Graph & Task Polling
+### Playbook stream
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/graph` | Cytoscape-compatible elements (nodes/edges) from Neo4j |
-| GET | `/api/tasks/{task_id}` | Poll task status and result |
+`ws://<api-host>/ws/playbook/{playbook_id}`
 
-**GET /api/graph Response:**
-```json
-{
-  "elements": {
-    "nodes": [{ "data": { "id": "...", "label": "...", "type": "..." } }],
-    "edges": [{ "data": { "source": "...", "target": "..." } }]
-  }
-}
-```
+### Playbook message types
 
-**GET /api/tasks/{task_id} Response (ready):**
-```json
-{
-  "task_id": "uuid",
-  "status": "SUCCESS",
-  "result": { ... }
-}
-```
-
----
-
-## WebSocket
-
-### Connection
-
-```
-ws://localhost:8000/ws/task/{task_id}
-```
-
-Connect after receiving `task_id` from a task-based POST endpoint.
-
-### Message Format
-
-Messages are JSON strings. Types:
-
-| Type | Payload | Description |
-|------|---------|-------------|
-| `stream` | `{ "stream": "stdout"|"stderr", "data": string }` | Live log line |
-| `result` | `{ "type": "result", "data": object }` | Final task result |
-| `done` | `{ "type": "done", "killed"?: boolean }` | Stream ended |
-
-### Client Behavior
-
-1. Connect after enqueueing a task.
-2. Receive `stream` messages for real-time logs (preserve ANSI for colorization).
-3. Optionally receive `result` before `done`.
-4. On `done`, close the connection.
+- `result`: `{ "type": "result", "module": "tasks.dns_intel", "data": <envelope> }`
+- `done`: `{ "type": "done", "module": "tasks.dns_intel", "status": "success|failure", "error": null|string }`

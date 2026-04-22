@@ -13,7 +13,7 @@ install-frontend:
 	cd frontend && $(NPM) install
 
 dev:
-	$(PYTHON) main.py
+	$(NPM) run dev
 
 lint: backend-check frontend-lint
 
@@ -29,7 +29,7 @@ frontend-build:
 	cd frontend && $(NPM) run build
 
 docker-up:
-	docker compose up -d
+	$(NPM) run up
 
 docker-down:
 	docker compose down

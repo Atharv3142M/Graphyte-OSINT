@@ -13,6 +13,7 @@ from typing import Dict, Optional
 
 from backend.celery_app import celery_app
 from backend.config_injection import temporary_service_config
+from backend.normalize import normalize_result
 
 # Strict hard timeout (seconds). Subprocess is killed if exceeded.
 TASK_HARD_TIMEOUT = int(os.getenv("CELERY_TASK_HARD_TIMEOUT", "300"))
@@ -47,6 +48,7 @@ def _spawn_and_stream(
     chan = f"{REDIS_CHAN_PREFIX}{task_id}"
     stdin_json = json.dumps(payload).encode("utf-8")
     stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
 
     env = os.environ.copy()
     if extra_env:
@@ -109,6 +111,7 @@ def _spawn_and_stream(
                     break
                 text = chunk.decode("utf-8", errors="replace").rstrip()
                 if text:
+                    stderr_lines.append(text)
                     msg = json.dumps({"stream": "stderr", "data": text})
                     redis_client.publish(chan, msg)
                     if playbook_chan:
@@ -154,19 +157,33 @@ def _spawn_and_stream(
             )
         return {"error": "Task timeout (SIGKILL)", "success": False}
 
-    out = "\n".join(stdout_lines).strip()
+    out = stdout_lines[-1].strip() if stdout_lines else ""
     try:
-        result = json.loads(out) if out else {"error": "No output"}
+        if not out:
+            # If nothing was printed to stdout, module likely crashed
+            err_msg = "\n".join(stderr_lines).strip() or "No output from module"
+            raw_result = {"error": err_msg, "success": False}
+        else:
+            raw_result = json.loads(out)
     except json.JSONDecodeError:
-        result = {"error": "Invalid JSON output", "raw": out[:500]}
+        raw_result = {"error": "Invalid JSON output", "raw": out[:500], "success": False}
 
-    redis_client.publish(chan, json.dumps({"type": "result", "data": result}))
-    has_error = isinstance(result, dict) and bool(result.get("error"))
-    redis_client.publish(chan, json.dumps({"type": "done", "error": has_error}))
+    envelope = normalize_result(module_name, raw_result if isinstance(raw_result, dict) else {"raw": raw_result})
+
+    redis_client.publish(chan, json.dumps({"type": "result", "data": envelope}))
+    has_error = not bool(envelope.get("ok"))
+    error_msg = None
+    try:
+        errors = envelope.get("errors") or []
+        if errors and isinstance(errors, list) and isinstance(errors[0], dict):
+            error_msg = errors[0].get("message")
+    except Exception:
+        error_msg = None
+    redis_client.publish(chan, json.dumps({"type": "done", "error": has_error, "error_msg": error_msg}))
     if playbook_chan:
         redis_client.publish(
             playbook_chan,
-            json.dumps({"type": "result", "module": module_name, "data": result}),
+            json.dumps({"type": "result", "module": module_name, "data": envelope}),
         )
         redis_client.publish(
             playbook_chan,
@@ -175,14 +192,14 @@ def _spawn_and_stream(
                     "type": "done",
                     "module": module_name,
                     "status": "failure" if has_error else "success",
-                    "error": result.get("error") if has_error else None,
+                    "error": error_msg if has_error else None,
                 }
             ),
         )
-    return result
+    return envelope
 
 
-def _ingest_stix_bundle(module_name: str, result: dict) -> None:
+def _ingest_stix_bundle(module_name: str, envelope: dict) -> None:
     """Convert module result to STIX bundle and ingest into Neo4j."""
     import logging
     logger = logging.getLogger(__name__)
@@ -190,7 +207,10 @@ def _ingest_stix_bundle(module_name: str, result: dict) -> None:
         from backend.stix_pipeline import build_stix_bundle
         from backend.neo4j_client import Neo4jClient
 
-        bundle = build_stix_bundle(module_name, result)
+        raw = envelope.get("raw") if isinstance(envelope, dict) else None
+        if not isinstance(raw, dict):
+            raw = {}
+        bundle = build_stix_bundle(module_name, raw)
         if not bundle:
             logger.warning("[STIX] No bundle produced for module=%s (empty or failed result)", module_name)
             return
@@ -228,7 +248,7 @@ def _run_module_subprocess(
         result = _spawn_and_stream(module_name, payload, task_id, redis_client, None, playbook_chan)
 
     # Best-effort STIX enrichment — don't fail the task if Neo4j is unavailable
-    has_error = result and result.get("error")
+    has_error = not bool(result and result.get("ok", False))
     logger.debug("[STIX] module=%s result_success=%s has_error=%s", module_name, not has_error, bool(has_error))
     if not has_error:
         _ingest_stix_bundle(module_name, result)

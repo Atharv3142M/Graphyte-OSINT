@@ -1,0 +1,9 @@
+{
+  "name": "osint-digital-footprint-visualizer",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/run-stack.mjs dev",
+    "up": "node scripts/run-stack.mjs up",
+    "prod": "node scripts/run-stack.mjs prod"
+  }
+}

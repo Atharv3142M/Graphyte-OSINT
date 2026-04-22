@@ -73,7 +73,7 @@ def ssl_analyze(
         Dict with certificate details, SANs, cipher info, protocol,
         expiry countdown, chain depth, and overall security grade.
     """
-    host = host.strip().lower().lstrip("http://").lstrip("https://").split("/")[0].split(":")[0]
+    host = host.strip().lower().replace("https://", "", 1).replace("http://", "", 1).split("/")[0].split(":")[0]
 
     result: dict[str, Any] = {
         "success": True,

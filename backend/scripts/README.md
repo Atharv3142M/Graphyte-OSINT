@@ -1,15 +1,15 @@
 # Backend Scripts
 
-Utility scripts for database seeding, infrastructure checks, and E2E simulation.
+Operational utility scripts for backend verification and local development.
 
 ## Prerequisites
 
 - Docker containers running: `docker compose up -d`
 - Run from `backend/` directory: `cd backend`
 
-## 1. Seed Database
+## Seed database
 
-Seeds default tenant (Alpha Corp) and mock Shodan/Censys configs.
+Seeds the default tenant and baseline provider configuration.
 
 ```bash
 python scripts/seed_db.py
@@ -17,17 +17,17 @@ python scripts/seed_db.py
 
 Output includes the default tenant UUID for `X-Tenant-ID` header.
 
-## 2. Infrastructure Sanity Check
+## Check infrastructure
 
-Verifies connectivity to all 5 services.
+Verifies connectivity to core services.
 
 ```bash
 python scripts/check_services.py
 ```
 
-## 3. E2E Investigation Simulator
+## Simulate investigation
 
-Simulates frontend: agent investigation + task with WebSocket stream.
+Runs a backend-level investigation simulation with streaming.
 
 ```bash
 # Ensure FastAPI and Celery are running first

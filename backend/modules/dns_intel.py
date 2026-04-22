@@ -150,7 +150,7 @@ def dns_recon(
             "domain": domain,
         }
 
-    domain = domain.strip().lower().lstrip("http://").lstrip("https://").split("/")[0]
+    domain = domain.strip().lower().replace("https://", "", 1).replace("http://", "", 1).split("/")[0]
 
     result: dict[str, Any] = {
         "success": True,

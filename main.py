@@ -14,11 +14,12 @@ from __future__ import annotations
 import os
 import argparse
 import signal
+import socket
 import subprocess
 import sys
 import threading
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 try:
@@ -57,7 +58,13 @@ def _detect_python() -> str:
     return sys.executable
 
 
-def _spawn(name: str, cmd: List[str], cwd: str | None = None, use_shell: bool = False) -> subprocess.Popen:
+def _spawn(
+    name: str,
+    cmd: List[str] | str,
+    cwd: str | None = None,
+    use_shell: bool = False,
+    env: Optional[Dict[str, str]] = None,
+) -> subprocess.Popen:
     kwargs: Dict = {
         "stdout": subprocess.PIPE,
         "stderr": subprocess.STDOUT,
@@ -68,13 +75,40 @@ def _spawn(name: str, cmd: List[str], cwd: str | None = None, use_shell: bool = 
         kwargs["cwd"] = cwd
     if use_shell:
         kwargs["shell"] = True
+    if env:
+        merged_env = dict(os.environ)
+        merged_env.update(env)
+        kwargs["env"] = merged_env
     if os.name == "nt":
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         kwargs["creationflags"] = creationflags
     else:
         kwargs["preexec_fn"] = os.setsid  # type: ignore[attr-defined]
-    print(f"[LAUNCH] {name}: {' '.join(cmd)}")
+    if isinstance(cmd, list):
+        launch_cmd = " ".join(cmd)
+    else:
+        launch_cmd = cmd
+    print(f"[LAUNCH] {name}: {launch_cmd}")
     return subprocess.Popen(cmd, **kwargs)  # type: ignore[arg-type]
+
+
+def _port_is_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _find_api_port(preferred: int = 8000, max_tries: int = 25) -> int:
+    if _port_is_available(preferred):
+        return preferred
+    for p in range(preferred + 1, preferred + 1 + max_tries):
+        if _port_is_available(p):
+            return p
+    return preferred
 
 
 def _terminate(name: str, proc: subprocess.Popen) -> None:
@@ -126,7 +160,10 @@ def main() -> int:
 
     # Commands
     py = _detect_python()
-    uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--reload", "--port", "8000"]
+    api_port = _find_api_port(8000)
+    if api_port != 8000:
+        print(f"[WARN] Port 8000 unavailable; using {api_port} for FastAPI.")
+    uvicorn_cmd = [py, "-m", "uvicorn", "backend.api:app", "--reload", "--port", str(api_port)]
     celery_cmd = [py, "-m", "celery", "-A", "backend.celery_app", "worker", "--loglevel=info"]
     if os.name == "nt":
         celery_cmd += ["--pool=solo", "--concurrency=1"]
@@ -144,10 +181,11 @@ def main() -> int:
         if not args.lite:
             procs["CELERY"] = _spawn("CELERY", celery_cmd, cwd=ROOT)
         # On Windows, next_cmd is a string and needs shell=True
+        next_env = {"NEXT_PUBLIC_API_URL": f"http://127.0.0.1:{api_port}"}
         if os.name == "nt":
-            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT, use_shell=True)  # type: ignore[arg-type]
+            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT, use_shell=True, env=next_env)  # type: ignore[arg-type]
         else:
-            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT)  # type: ignore[arg-type]
+            procs["NEXTJS"] = _spawn("NEXTJS", next_cmd, cwd=ROOT, env=next_env)  # type: ignore[arg-type]
 
         # Start log streaming threads
         t_fastapi = threading.Thread(

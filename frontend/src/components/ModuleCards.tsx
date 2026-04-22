@@ -19,10 +19,11 @@ import {
   Radar,
   Archive,
   MailSearch,
-  UserSearch,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { runModule, WS_BASE, type ModuleEndpoint } from "@/lib/api";
+import { runModule, WS_BASE, createTaskStream, type ModuleEndpoint } from "@/lib/api";
+import { useInvestigationStore } from "@/store/useInvestigationStore";
 
 /* ── Module definitions ─────────────────────────────────────────── */
 
@@ -186,7 +187,7 @@ const MODULES: ModuleDef[] = [
     id: "sherlock",
     label: "Sherlock",
     description: "Deep username hunt across hundreds of platforms.",
-    icon: UserSearch,
+    icon: UserCheck,
     endpoint: "/api/sherlock",
     fields: [{ name: "username", label: "Username", placeholder: "torvalds", type: "text", required: true }],
   },
@@ -232,6 +233,10 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
     }));
   }, []);
 
+  const initPlaybook = useInvestigationStore((s) => s.initPlaybook);
+  const setModuleResult = useInvestigationStore((s) => s.setModuleResult);
+  const appendLog = useInvestigationStore((s) => s.appendLog);
+
   const submit = useCallback(
     async (mod: ModuleDef) => {
       setCards((prev) => ({
@@ -249,16 +254,62 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
         const data = await runModule(mod.endpoint as ModuleEndpoint, body);
         const taskId = data.task_id;
 
+        // Initialize pseudo-playbook for result viewer
+        const pseudoPlaybookId = `tool-${taskId}`;
+        initPlaybook(pseudoPlaybookId, mod.label, ["Standalone Tool"], {
+          [mod.id]: { module: mod.id, task_id: taskId, status: "pending", label: mod.label }
+        });
+
         setCards((prev) => ({
           ...prev,
-          [mod.id]: { ...prev[mod.id], status: "success", result: data, taskId },
+          [mod.id]: { ...prev[mod.id], status: "loading", taskId },
         }));
 
         onStreamLog?.(
-          `\x1b[36m[${mod.label}]\x1b[0m Queued → ${taskId ?? "immediate"} \x1b[90m${WS_BASE}/ws/task/${taskId}\x1b[0m`
+          `\x1b[36m[${mod.label}]\x1b[0m Queued → ${taskId ?? "immediate"}`
         );
+
+        if (taskId) {
+           createTaskStream(
+             taskId,
+             (line, parsed) => {
+               if (!parsed) return;
+               const msgType = parsed.stream || parsed.type;
+               if (msgType === "stdout" || msgType === "stderr") {
+                 let msg = parsed.data;
+                 if (typeof msg !== "string") msg = JSON.stringify(msg);
+                 onStreamLog?.(`\x1b[36m[${mod.label}]\x1b[0m ${msg}`);
+               }
+             },
+             (finalResult: any) => {
+               setCards((prev) => ({
+                 ...prev,
+                 [mod.id]: { ...prev[mod.id], status: finalResult?.error ? "error" : "success", result: finalResult },
+               }));
+               setModuleResult(pseudoPlaybookId, mod.id, finalResult);
+               onStreamLog?.(`\x1b[32m[${mod.label}] Completed\x1b[0m`);
+             },
+             (err) => {
+               setCards((prev) => ({
+                 ...prev,
+                 [mod.id]: { ...prev[mod.id], status: "error", error: err },
+               }));
+               onStreamLog?.(`\x1b[31m[${mod.label}] Stream Error: ${err}\x1b[0m`);
+             }
+           );
+        } else {
+           // Immediate result
+           setCards((prev) => ({
+             ...prev,
+             [mod.id]: { ...prev[mod.id], status: "success", result: data },
+           }));
+           setModuleResult(pseudoPlaybookId, mod.id, data as unknown as Record<string, unknown>);
+        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const raw = err instanceof Error ? err.message : String(err);
+        const msg = /networkerror|failed to fetch|load failed/i.test(raw)
+          ? "Cannot reach backend API. Ensure `npm run dev` is running and backend health is available."
+          : raw;
         setCards((prev) => ({
           ...prev,
           [mod.id]: { ...prev[mod.id], status: "error", error: msg },
@@ -266,7 +317,7 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
         onStreamLog?.(`\x1b[31m[${mod.label}]\x1b[0m ${msg}`);
       }
     },
-    [cards, onStreamLog]
+    [cards, onStreamLog, initPlaybook, setModuleResult]
   );
 
   return (
@@ -279,12 +330,12 @@ export function ModuleCards({ onStreamLog }: ModuleCardsProps) {
         return (
           <div
             key={mod.id}
-            className="border border-slate-800 bg-slate-950/60 p-4 flex flex-col gap-3 hover:border-slate-700 transition-colors"
+            className="soc-panel-dense p-4 flex flex-col gap-3 hover:border-white/10 transition-colors"
           >
             {/* Header */}
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 border border-cyan-900 bg-cyan-950/40 flex items-center justify-center flex-shrink-0">
-                <Icon className="w-3.5 h-3.5 text-cyan-600" />
+              <div className="w-8 h-8 rounded-lg border border-indigo-500/20 bg-indigo-500/10 flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-indigo-400" />
               </div>
               <div className="min-w-0">
                 <h3 className="text-xs font-semibold text-slate-200 font-mono">{mod.label}</h3>

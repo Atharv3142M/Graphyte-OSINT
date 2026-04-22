@@ -46,10 +46,10 @@ export function GlobalTerminal() {
   const displayLines = streamLog.slice(-500);
 
   return (
-    <div className="soc-panel-dense overflow-hidden flex flex-col border-t border-slate-800">
+    <div className="overflow-hidden flex flex-col border-t border-white/[0.05] bg-white/[0.01] backdrop-blur-md">
       {/* Drag handle + collapse header */}
       <div
-        className="flex items-center justify-between px-3 py-1.5 cursor-ns-resize select-none border-b border-slate-800/50 bg-slate-950/50"
+        className="flex items-center justify-between px-4 py-2 cursor-ns-resize select-none border-b border-white/[0.05] bg-white/[0.02]"
         onMouseDown={(e) => {
           if (e.detail === 2) {
             setExpanded((v) => !v);
@@ -61,17 +61,14 @@ export function GlobalTerminal() {
         }}
       >
         <div className="flex items-center gap-2">
-          <Terminal className="w-3 h-3 text-cyan-600" />
-          <span className="text-[10px] font-semibold text-slate-500 tracking-widest uppercase">Console</span>
+          <Terminal className="w-3 h-3 text-indigo-400" />
+          <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">Aurora Console</span>
           {streamLog.length > 0 && (
             <span className="text-[9px] text-slate-700 tabular-nums">{streamLog.length} lines</span>
           )}
         </div>
         <div className="flex items-center gap-0.5">
-          <button
-            onClick={clearLog}
-            className="p-1 text-slate-600 hover:text-slate-400 transition-colors text-[10px]"
-          >
+          <button onClick={clearLog} className="p-1 text-slate-600 hover:text-slate-400 transition-colors text-[10px]">
             Clear
           </button>
           <button
@@ -90,7 +87,7 @@ export function GlobalTerminal() {
       {expanded && (
         <pre
           ref={containerRef}
-          className="flex-1 overflow-auto font-mono text-[10px] text-slate-400 px-3 py-1.5 leading-[1.6]"
+          className="flex-1 overflow-auto font-mono text-[11px] text-slate-300 px-4 py-2 leading-[1.55]"
           style={{ height, minHeight: 48 }}
         >
           {displayLines.length === 0 && (

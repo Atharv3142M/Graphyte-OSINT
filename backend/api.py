@@ -954,13 +954,13 @@ def get_env_vars(x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID"))
 
 
 @app.get("/api/graph")
-def get_graph():
+def get_graph(limit: int = 50):
     """Fetch STIX graph from Neo4j in Cytoscape format."""
     try:
         from backend.neo4j_client import Neo4jClient
 
         client = Neo4jClient()
-        data = client.get_graph_cytoscape()
+        data = client.get_graph_cytoscape(limit=limit)
         client.close()
         return data
     except Exception as e:

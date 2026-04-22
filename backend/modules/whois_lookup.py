@@ -68,7 +68,7 @@ def whois_lookup(domain: str) -> dict[str, Any]:
             "domain": domain,
         }
 
-    domain = domain.strip().lower().lstrip("http://").lstrip("https://").split("/")[0]
+    domain = domain.strip().lower().replace("https://", "", 1).replace("http://", "", 1).split("/")[0]
 
     try:
         w = python_whois.whois(domain)

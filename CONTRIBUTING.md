@@ -1,48 +1,41 @@
 # Contributing to OSINT Digital Footprint Visualizer
 
-Thanks for contributing.
+Thanks for contributing. This project welcomes improvements across backend modules, frontend UX, documentation, and developer tooling.
 
-## Development setup
+## Local development
 
 1. Fork and clone the repository.
-2. Start infrastructure: `docker compose up -d`
-3. Install backend deps: `pip install -r backend/requirements.txt`
-4. Install frontend deps: `cd frontend && npm install`
-5. Run locally: `python main.py`
+2. Start the stack: `npm run dev`
+3. Run checks before opening a PR:
+   - `make lint`
+   - `make test`
 
 ## Branching and pull requests
 
 - Create a feature branch from `main`.
-- Keep PRs focused and small when possible.
+- Keep PRs focused and scoped to one concern.
 - Include clear reproduction and validation steps.
 - Link related issues in the PR description.
+- Include screenshots or terminal output for UI/runtime changes when relevant.
 
-## Code quality checks
-
-Run before opening a PR:
-
-- `make lint`
-- `make test`
-
-If `make` is unavailable on your platform, run the equivalent commands from `Makefile`.
-
-## Module contribution guide (backend + UI)
+## Adding or updating a module
 
 When adding a new OSINT module, follow this sequence:
 
 1. Create `backend/modules/<module_name>.py`
 2. Add a Celery task in `backend/tasks.py`
-3. Add STIX mapping in `backend/stix_pipeline.py`
-4. Expose API route in `backend/api.py`
-5. Add a UI card/entry point in `frontend/src/app/tools`
+3. Normalize output in `backend/normalize.py`
+4. Add STIX mapping in `backend/stix_pipeline.py` as needed
+5. Expose API route in `backend/api.py`
+6. Add frontend entry points in `frontend/src/app/tools` or playbook routing surfaces
 
-Keep output schema consistent so module results are renderable and mappable into STIX entities.
+All modules should return predictable outputs and support failure envelopes for frontend rendering.
 
 ## Commit conventions
 
 - Use descriptive commit messages.
 - Prefer one concern per commit.
-- Avoid committing secrets, `.env` files, or generated local artifacts.
+- Never commit secrets, `.env` files, or generated local artifacts.
 
 ## Reporting bugs
 

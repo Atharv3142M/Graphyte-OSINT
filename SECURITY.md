@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Security updates are provided for the latest `main` branch.
+Security fixes are applied to the latest `main` branch.
 
 ## Reporting a vulnerability
 
-Please do not open public issues for security vulnerabilities.
+Do not report vulnerabilities in public issues.
 
 Report privately with:
 
@@ -17,13 +17,13 @@ Report privately with:
 
 Until a dedicated security email is configured, open a private security advisory in GitHub for this repository.
 
-## Response targets
+## Response targets (best effort)
 
 - Initial triage: within 72 hours
 - Confirmation and severity: within 7 days
 - Patch or mitigation target: depends on severity and complexity
 
-## Security expectations for contributors
+## Secure development expectations
 
 - Validate and sanitize all user input.
 - Guard outbound network requests against SSRF targets.

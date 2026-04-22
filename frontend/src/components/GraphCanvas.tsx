@@ -130,32 +130,27 @@ export function GraphCanvas({
       const cy = cytoscape({
         container: containerRef.current,
         elements: { nodes, edges } as cytoscape.ElementsDefinition,
+        // Cytoscape style typings are restrictive; keep runtime-correct objects.
         style: [
           /* ── Default nodes: cyan glow ──────────────────── */
           {
             selector: "node",
             style: {
               "background-color": TYPE_COLORS.default.bg,
-              "border-width": 2,
+              "border-width": 1,
               "border-color": TYPE_COLORS.default.border,
-              "border-opacity": 0.6,
+              "border-opacity": 0.8,
               label: "data(label)",
               "text-valign": "bottom",
               "text-halign": "center",
               "font-size": "9px",
-              "font-family": "Monaco, 'Courier New', monospace",
+              "font-family": "Monaco, Courier New, monospace",
               color: "#cbd5e1",
               "text-margin-y": 6,
-              "text-outline-color": "#0f172a",
-              "text-outline-width": 2,
-              width: 32,
-              height: 32,
-              "overlay-padding": 6,
-              "shadow-blur": 16,
-              "shadow-color": TYPE_COLORS.default.glow,
-              "shadow-offset-x": 0,
-              "shadow-offset-y": 0,
-              "shadow-opacity": 0.8,
+              "text-outline-color": "#0F172A",
+              "text-outline-width": 1.5,
+              width: 24,
+              height: 24,
             },
           },
           /* ── Type-specific nodes ───────────────────────── */
@@ -164,52 +159,47 @@ export function GraphCanvas({
             style: {
               "background-color": colors.bg,
               "border-color": colors.border,
-              "shadow-color": colors.glow,
             },
           })),
           /* ── Selected / highlighted ────────────────────── */
           {
             selector: "node:selected",
             style: {
-              "border-width": 3,
-              "border-color": "#22d3ee",
-              "shadow-blur": 28,
-              "shadow-opacity": 1,
-              width: 40,
-              height: 40,
+              "border-width": 2,
+              "border-color": "#ffffff",
+              width: 28,
+              height: 28,
             },
           },
           {
             selector: "node.highlighted",
             style: {
-              "border-width": 3,
-              "border-color": "#22d3ee",
-              "shadow-blur": 24,
-              "shadow-opacity": 1,
+              "border-width": 2,
+              "border-color": "#ffffff",
             },
           },
           /* ── Edges ─────────────────────────────────────── */
           {
             selector: "edge",
             style: {
-              "line-color": "#334155",
+              "line-color": "#475569",
               "target-arrow-color": "#475569",
               "target-arrow-shape": "triangle",
               "curve-style": "bezier",
-              width: 1.5,
-              opacity: 0.4,
+              width: 1,
+              opacity: 0.6,
             },
           },
           {
             selector: "edge:selected, edge.highlighted",
             style: {
-              "line-color": "#06b6d4",
-              "target-arrow-color": "#06b6d4",
-              opacity: 0.9,
-              width: 2,
+              "line-color": "#94a3b8",
+              "target-arrow-color": "#94a3b8",
+              opacity: 1,
+              width: 1.5,
             },
           },
-        ] as cytoscape.Stylesheet[],
+        ] as any,
         layout: {
           name: "cose",
           animate: nodes.length < 500,

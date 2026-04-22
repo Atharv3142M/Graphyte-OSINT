@@ -157,13 +157,12 @@ export default function SettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-950">
-      <div className="p-4 max-w-4xl mx-auto space-y-4">
+      <div className="p-7 max-w-5xl mx-auto space-y-5">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-6 flex items-center justify-between">
           <div>
-            <h1 className="text-sm font-semibold text-slate-100 uppercase tracking-widest">Settings</h1>
-            <p className="text-[10px] text-slate-600 mt-0.5">Configure API keys, environment variables, and service endpoints</p>
+            <h1 className="text-2xl font-semibold text-slate-100">Settings</h1>
+            <p className="text-sm text-slate-400 mt-1">Configure API keys, environment variables, and service endpoints.</p>
           </div>
           <button
             onClick={loadEnvVars}
@@ -175,8 +174,7 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        {/* Service Status Row */}
-        <div className="soc-panel p-3">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
           <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-2">Service Connectivity</div>
           <div className="flex gap-2 flex-wrap">
             {[
@@ -203,9 +201,8 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* API Keys Section */}
         {grouped["api"] && grouped["api"].length > 0 && (
-          <div className="soc-panel p-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="flex items-center gap-2 mb-3">
               <Key className="w-3 h-3 text-cyan-600" />
               <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">API Keys</h2>
@@ -252,11 +249,10 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Environment Variables by Category */}
         {Object.entries(grouped).filter(([cat]) => cat !== "api").map(([category, vars]) => {
           const Icon = CATEGORY_ICONS[category] ?? Server;
           return (
-            <div key={category} className="soc-panel p-4">
+            <div key={category} className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Icon className="w-3 h-3 text-slate-500" />
                 <h2 className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
@@ -314,8 +310,7 @@ export default function SettingsPage() {
           );
         })}
 
-        {/* Info */}
-        <div className="soc-panel p-3 border-amber-900/30">
+        <div className="rounded-xl border border-amber-900/30 bg-slate-900/40 p-3">
           <div className="flex items-start gap-2">
             <AlertTriangle className="w-3 h-3 text-amber-600 mt-0.5 flex-shrink-0" />
             <div className="text-[9px] text-slate-500 leading-relaxed">

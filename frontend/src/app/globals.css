@@ -4,171 +4,133 @@
 
 @layer base {
   :root {
-    /* ── Core palette ─────────────────────────────── */
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --border: 217.2 32.6% 17.5%;
-    --ring: 187 85% 43%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    
+    --card: 240 10% 4.5%;
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
 
-    /* ── Accent colors ────────────────────────────── */
-    --accent-cyan: 187 85% 43%;
-    --accent-violet: 258 89% 66%;
-    --accent-amber: 38 92% 50%;
-    --accent-red: 0 84% 60%;
-    --accent-green: 142 71% 45%;
-    --accent-pink: 330 81% 60%;
-
-    /* ── Glow intensities ─────────────────────────── */
-    --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.25), 0 0 60px rgba(6, 182, 212, 0.08);
-    --glow-violet: 0 0 20px rgba(139, 92, 246, 0.25), 0 0 60px rgba(139, 92, 246, 0.08);
-    --glow-amber: 0 0 20px rgba(245, 158, 11, 0.25), 0 0 60px rgba(245, 158, 11, 0.08);
-    --glow-red: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 60px rgba(239, 68, 68, 0.1);
-    --glow-green: 0 0 20px rgba(34, 197, 94, 0.25), 0 0 60px rgba(34, 197, 94, 0.08);
-
-    /* ── Glass properties ─────────────────────────── */
-    --glass-bg: rgba(10, 15, 25, 0.92);
-    --glass-border: rgba(255, 255, 255, 0.05);
-    --glass-blur: 12px;
+    /* ── InfoSec Operational Colors ────────────────────────── */
+    --accent-cyan: 199 89% 48%;     /* Deep technical blue */
+    --accent-violet: 282 44% 47%;
+    --accent-amber: 37 90% 51%;     /* Warning orange/amber */
+    --accent-red: 0 72% 51%;        /* Alert red */
+    --accent-green: 142 71% 45%;    /* Safe green */
+    
+    --radius: 0.25rem; /* Sharp, professional corners */
   }
 }
 
 /* ── Body ────────────────────────────────────────── */
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
-  background-image:
-    radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.025) 0%, transparent 70%),
-    radial-gradient(circle 1px at center, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px;
-  background-position: center, center;
-  overflow: hidden;
+  @apply bg-slate-950 text-slate-200 antialiased font-sans;
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(79, 70, 229, 0.1), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(147, 51, 234, 0.1), transparent 25%);
+  background-attachment: fixed;
 }
 
-/* ── SOC panels ────────────────────────────────── */
+/* ── Custom UI Layers ────────────────────────────────── */
 @layer utilities {
   .soc-panel {
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
+    @apply bg-white/[0.02] border border-white/[0.05] shadow-xl backdrop-blur-xl rounded-2xl;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   }
 
   .soc-panel-dense {
-    background: rgba(8, 12, 20, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    @apply bg-white/[0.03] border border-white/[0.04] backdrop-blur-md rounded-xl;
   }
 
-  .glow-cyan {
-    box-shadow: var(--glow-cyan);
-  }
-  .glow-violet {
-    box-shadow: var(--glow-violet);
-  }
-  .glow-amber {
-    box-shadow: var(--glow-amber);
-  }
-  .glow-red {
-    box-shadow: var(--glow-red);
-  }
-  .glow-green {
-    box-shadow: var(--glow-green);
+  /* Structural UI borders */
+  .border-sharp {
+    @apply rounded-xl border border-white/[0.08];
   }
 
-  .glow-cyan-subtle {
-    box-shadow: 0 0 8px rgba(6, 182, 212, 0.1);
-  }
-
-  /* SOC-grade monospace inputs */
+  /* Modern Glass Inputs */
   .soc-input {
-    @apply bg-slate-950 border border-slate-800 text-slate-200 placeholder:text-slate-600;
-    @apply text-xs font-mono;
-    @apply outline-none focus:border-cyan-700 transition-colors px-2.5 py-1.5;
+    @apply bg-white/[0.04] border border-white/[0.08] text-slate-100 placeholder:text-slate-500;
+    @apply text-sm rounded-xl;
+    @apply outline-none focus:border-indigo-500/50 focus:bg-white/[0.06] transition-all px-4 py-2.5;
   }
 
-  /* SOC-grade buttons */
+  /* Modern Glowing Buttons */
   .soc-btn-primary {
-    @apply border border-cyan-800 text-cyan-400 hover:bg-cyan-950 hover:border-cyan-700;
-    @apply text-xs font-semibold tracking-wider uppercase;
-    @apply px-3 py-1.5 transition-colors;
+    @apply bg-indigo-600 border border-indigo-500/50 text-white hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)];
+    @apply text-xs font-semibold tracking-wide rounded-lg;
+    @apply px-4 py-2 transition-all duration-300;
   }
 
   .soc-btn-ghost {
-    @apply text-slate-500 hover:text-slate-300 hover:bg-white/5;
-    @apply text-xs px-2 py-1 transition-colors;
+    @apply text-slate-400 hover:text-slate-100 hover:bg-white/10 rounded-lg;
+    @apply text-sm px-3 py-1.5 transition-colors;
   }
 }
 
-/* ── Keyframes ───────────────────────────────────── */
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-
-@keyframes node-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.06); }
-}
-
-@keyframes edge-flow {
-  0% { stroke-dashoffset: 20; }
-  100% { stroke-dashoffset: 0; }
-}
-
+/* ── Keyframes ─────────────────────── */
 @keyframes fade-in-up {
-  0% { opacity: 0; transform: translateY(4px); }
-  100% { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slide-in-right {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
 }
 
-.animate-fade-in-up {
-  animation: fade-in-up 0.2s ease-out both;
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg, transparent 25%, rgba(6, 182, 212, 0.06) 50%, transparent 75%);
-  background-size: 200% 100%;
-  animation: shimmer 2s ease-in-out infinite;
+.animate-in {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ── Scrollbar ───────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-transparent;
+  @apply bg-[#0C0C0E];
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-slate-800;
+  @apply bg-slate-700 rounded-sm;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-cyan-800;
+  @apply bg-slate-500;
 }
 
 /* ── Focus rings ─────────────────────────────────── */
 *:focus-visible {
-  outline: 1px solid rgba(6, 182, 212, 0.4);
+  outline: 1px solid rgba(255, 255, 255, 0.3);
   outline-offset: 1px;
 }
 
 /* ── Selection ───────────────────────────────────── */
 ::selection {
-  background: rgba(6, 182, 212, 0.2);
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
