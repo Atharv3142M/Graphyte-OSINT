@@ -1,4 +1,4 @@
-# OSINT Digital Footprint Visualizer
+# Graphyte OSINT
 
 An open-source OSINT investigation platform with a FastAPI/Celery backend, Next.js frontend, real-time streaming, and STIX-compatible graph workflows.
 
@@ -22,7 +22,7 @@ An open-source OSINT investigation platform with a FastAPI/Celery backend, Next.
 
 ```bash
 git clone <repo-url>
-cd OSINT-Digital-Footprint-Visualizer
+cd Graphyte-OSINT
 npm run dev
 ```
 

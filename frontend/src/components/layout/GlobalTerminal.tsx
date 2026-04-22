@@ -62,7 +62,7 @@ export function GlobalTerminal() {
       >
         <div className="flex items-center gap-2">
           <Terminal className="w-3 h-3 text-indigo-400" />
-          <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">Aurora Console</span>
+          <span className="text-[11px] font-semibold text-slate-300 tracking-wide uppercase">Graphyte Console</span>
           {streamLog.length > 0 && (
             <span className="text-[9px] text-slate-700 tabular-nums">{streamLog.length} lines</span>
           )}

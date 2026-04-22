@@ -5,8 +5,8 @@ import { GlobalTerminal } from "@/components/layout/GlobalTerminal";
 import { Activity, Shield } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "OSINT Footprint Visualizer",
-  description: "Professional OSINT Digital Footprint Visualizer",
+  title: "Graphyte OSINT",
+  description: "Professional Graphyte OSINT Visualizer",
 };
 
 export default function RootLayout({
@@ -24,8 +24,8 @@ export default function RootLayout({
           <div className="flex-1 flex flex-col min-w-0">
             <header className="h-14 border-b border-white/[0.05] px-6 flex items-center justify-between bg-white/[0.02] backdrop-blur-md">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OSINT Digital Footprint Visualizer</div>
-                <div className="text-sm text-slate-300 mt-0.5">Aurora Operational Environment</div>
+                <div className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Graphyte OSINT</div>
+                <div className="text-sm text-slate-300 mt-0.5">Graphyte Operational Environment</div>
               </div>
               <div className="flex items-center gap-5 text-[11px]">
                 <div className="flex items-center gap-1.5 text-slate-500">

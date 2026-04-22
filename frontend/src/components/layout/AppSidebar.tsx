@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
+  Activity,
   Compass,
   FlaskConical,
   Share2,
@@ -32,15 +33,15 @@ export function AppSidebar() {
   return (
     <aside className="w-[280px] h-full border-r border-white/[0.05] bg-white/[0.01] backdrop-blur-xl flex flex-col">
       <div className="px-5 py-5 border-b border-white/[0.05]">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl border border-indigo-500/20 bg-indigo-500/10 flex items-center justify-center">
-            <Radar className="w-4.5 h-4.5 text-indigo-400" />
+          <div className="flex items-center gap-3 w-full pl-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+              <Activity className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <p className="text-sm font-bold tracking-tight text-slate-100">Graphyte OSINT</p>
+              <p className="text-[10px] text-slate-500 font-mono tracking-widest uppercase">Target Intel</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-bold tracking-tight text-slate-100">OSINT Aurora</p>
-            <p className="text-[11px] text-slate-500">Intelligent Workstation</p>
-          </div>
-        </div>
       </div>
 
       <nav className="flex-1 p-3.5 space-y-1">

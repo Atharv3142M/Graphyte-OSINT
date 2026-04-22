@@ -19,7 +19,8 @@ def sherlock_hunt(username: str, timeout: int = 10, max_connections: int = 5) ->
     if not username:
         return {"success": False, "error": "username is required"}
 
-    site_data_all = SitesInformation().sites
+    sites_info = SitesInformation().sites
+    site_data_all = {name: site.information for name, site in sites_info.items()}
     query_notify = QueryNotifyPrint(verbose=False, print_all=False)
 
     def _run() -> dict[str, Any]:

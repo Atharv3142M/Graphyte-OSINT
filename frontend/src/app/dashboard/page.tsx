@@ -29,7 +29,7 @@ export default function DashboardPage() {
     [resultStore]
   );
 
-  const refreshStats = useCallback(async () => {
+  const refreshStats = useCallback(async (populateGraph = false) => {
     try {
       const data = await fetchGraph();
       setGraphStats({
@@ -37,7 +37,7 @@ export default function DashboardPage() {
         edges: data.edges?.length ?? 0,
         refreshedAt: new Date().toLocaleTimeString(),
       });
-      setGraphData(data);
+      if (populateGraph) setGraphData(data);
     } catch {
       // non-blocking
     }
@@ -49,12 +49,12 @@ export default function DashboardPage() {
   return (
     <div className="h-full overflow-y-auto bg-transparent">
       <div className="max-w-[1400px] mx-auto p-4 md:p-8 space-y-6">
-        <div className="soc-panel rounded-2xl p-6 relative overflow-hidden backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
+        <div className="soc-panel rounded-2xl p-6 relative backdrop-blur-2xl bg-white/5 border border-white/10 shadow-2xl">
           <div className="absolute top-0 right-0 p-8 w-64 h-64 bg-indigo-500/20 blur-3xl rounded-full" />
           <div className="flex items-start justify-between gap-6 relative z-10">
             <div>
               <div className="text-[11px] uppercase font-semibold tracking-wider text-indigo-400 mb-2">Operation Center</div>
-              <h1 className="text-3xl font-bold text-white mt-1 tracking-tight">Aurora Investigation</h1>
+              <h1 className="text-3xl font-bold text-white mt-1 tracking-tight">Graphyte OSINT Investigation</h1>
               <p className="text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
                 Execute intelligent OSINT playbooks to normalize data, run graph enrichment modules, and output operational reports.
               </p>
@@ -102,7 +102,7 @@ export default function DashboardPage() {
                     appendLog(`[Playbook] Completed ${playbookId}`);
                     setStatus("done");
                     setIsRunning(false);
-                    refreshStats();
+                    refreshStats(true);
                   },
                   (err) => {
                     appendLog(`[WS Error] ${err}`);

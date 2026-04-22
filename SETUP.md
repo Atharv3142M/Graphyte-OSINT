@@ -10,7 +10,7 @@
 
 ```bash
 git clone <repo-url>
-cd OSINT-Digital-Footprint-Visualizer
+cd Graphyte-OSINT
 npm run dev
 ```
 

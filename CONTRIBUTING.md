@@ -1,4 +1,4 @@
-# Contributing to OSINT Digital Footprint Visualizer
+# Contributing to Graphyte OSINT
 
 Thanks for contributing. This project welcomes improvements across backend modules, frontend UX, documentation, and developer tooling.
 
