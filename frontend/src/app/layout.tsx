@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppSidebar } from "@/components/layout/AppSidebar";
-import { GlobalTerminal } from "@/components/layout/GlobalTerminal";
 import { Activity, Shield } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -41,9 +40,6 @@ export default function RootLayout({
             <main className="flex-1 overflow-hidden bg-transparent">
               {children}
             </main>
-            <div className="flex-shrink-0 z-40">
-              <GlobalTerminal />
-            </div>
           </div>
         </div>
       </body>

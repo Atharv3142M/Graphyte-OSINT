@@ -1,15 +1,39 @@
 """
 CLI entry point for subprocess execution of OSINT modules.
-Invoked as: python -m run_module <module_name>
-Reads JSON payload from stdin, calls the module function, writes JSON result to stdout.
-Any progress or errors go to stderr.
+Invoked as: python -m backend.run_module <module_name>
+Reads JSON payload from stdin, calls the module function, writes a SINGLE JSON
+result line to stdout.  All progress/log/print output from the module (and its
+transitive imports) is force-redirected to stderr to guarantee a clean stdout
+JSON contract.
+
+Contract:
+  - stdout: exactly one line, valid JSON
+  - stderr: free-form (logs, tracebacks, third-party prints, warnings)
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
-from typing import Any, Dict
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator
+
+
+@contextmanager
+def _redirect_stdout_to_stderr() -> Iterator[None]:
+    """Force every write to sys.stdout (incl. third-party prints) onto stderr.
+
+    This protects the JSON-on-stdout contract: any module that calls print(),
+    or any imported library that emits a deprecation/progress message, would
+    otherwise corrupt the output stream. We restore stdout *only* for the
+    final json.dumps line written by main().
+    """
+    saved = sys.stdout
+    try:
+        sys.stdout = sys.stderr
+        yield
+    finally:
+        sys.stdout = saved
 
 
 def _load_service_config() -> Dict[str, Any]:
@@ -41,7 +65,10 @@ def main() -> None:
     service_config = _load_service_config()
     result: Dict[str, Any] = {}
 
+    # Everything below runs with stdout silently redirected to stderr.
+    # We only print the final JSON to the real stdout in the cleanup block.
     try:
+      with _redirect_stdout_to_stderr():
         if module_name == "shodan_recon":
             from backend.modules.shodan_recon import shodan_search
 
@@ -184,10 +211,15 @@ def main() -> None:
             "success": False,
         }
 
-    # Always output valid JSON to stdout and flush immediately
-    output = json.dumps(result)
-    print(output)
-    sys.stdout.flush()
+    # Final write to the REAL stdout — guaranteed to be the last line and to
+    # be valid JSON. Use sys.__stdout__ in case anything still has a handle on
+    # the swapped sys.stdout.
+    try:
+        output = json.dumps(result, default=str)
+    except Exception as e:
+        output = json.dumps({"error": f"Result not JSON-serializable: {e}", "success": False})
+    sys.__stdout__.write(output + "\n")
+    sys.__stdout__.flush()
 
 
 if __name__ == "__main__":

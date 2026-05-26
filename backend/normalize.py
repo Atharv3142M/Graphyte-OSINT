@@ -149,16 +149,21 @@ def _title_for_module(module_name: str, raw: Dict[str, Any]) -> str:
     return title
 
 
-def normalize_result(module_name: str, raw_result: Dict[str, Any]) -> Dict[str, Any]:
-    # Unwrap 'data' key if modules returned {"success": True, "data": {...}}
-    if isinstance(raw_result, dict) and "data" in raw_result and isinstance(raw_result["data"], dict):
+def normalize_result(module_name: str, raw_result: Any) -> Dict[str, Any]:
+    # Defensive: accept anything and coerce to a dict shape we can normalize.
+    if raw_result is None:
+        raw = {"error": "Module returned no result", "success": False}
+    elif isinstance(raw_result, dict) and "data" in raw_result and isinstance(raw_result["data"], dict):
+        # Unwrap {"success": True, "data": {...}}
         unwrapped = dict(raw_result["data"])
         unwrapped["success"] = raw_result.get("success", True)
         if "error" in raw_result:
             unwrapped["error"] = raw_result["error"]
         raw = unwrapped
+    elif isinstance(raw_result, dict):
+        raw = raw_result
     else:
-        raw = raw_result if isinstance(raw_result, dict) else {"error": "Invalid result type", "raw": _to_str(raw_result)}
+        raw = {"error": "Invalid result type", "raw": _to_str(raw_result), "success": False}
 
     ok = bool(raw.get("success", True)) and not bool(raw.get("error"))
     errors: List[Dict[str, Any]] = []

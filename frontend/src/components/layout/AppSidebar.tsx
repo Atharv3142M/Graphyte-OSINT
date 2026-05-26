@@ -19,12 +19,13 @@ const NAV_ITEMS: {
   caption: string;
   icon: React.ElementType;
   href: string;
+  advanced?: boolean;
 }[] = [
-  { id: "dashboard", label: "Overview", caption: "Launch and monitor", icon: Compass, href: "/dashboard" },
-  { id: "workspace", label: "Investigation", caption: "Graph + entities", icon: Share2, href: "/workspace" },
-  { id: "tools", label: "Tools", caption: "Module runner", icon: FlaskConical, href: "/tools" },
+  { id: "dashboard", label: "Search", caption: "Investigate any target", icon: Compass, href: "/dashboard" },
   { id: "reports", label: "Reports", caption: "Export outputs", icon: FileText, href: "/reports" },
   { id: "settings", label: "Settings", caption: "Keys and services", icon: Settings, href: "/settings" },
+  { id: "tools", label: "Module Runner", caption: "Run a single module", icon: FlaskConical, href: "/tools", advanced: true },
+  { id: "workspace", label: "Workspace", caption: "Graph + terminal", icon: Share2, href: "/workspace", advanced: true },
 ];
 
 export function AppSidebar() {
@@ -45,25 +46,35 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex-1 p-3.5 space-y-1">
-        {NAV_ITEMS.map(({ id, label, caption, icon: Icon, href }) => {
+        {NAV_ITEMS.map(({ id, label, caption, icon: Icon, href, advanced }, idx) => {
           const isActive = pathname === href || (id === "dashboard" && pathname === "/");
+          const prevIsAdvanced = idx > 0 ? !!NAV_ITEMS[idx - 1].advanced : false;
+          const showDivider = !!advanced && !prevIsAdvanced;
           return (
-            <Link
-              key={id}
-              href={href}
-              className={cn(
-                "w-full rounded-xl px-3 py-2.5 flex items-center gap-3 transition-all border",
-                isActive
-                  ? "bg-indigo-500/10 text-indigo-100 border-indigo-500/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
-                  : "text-slate-400 border-transparent hover:text-slate-100 hover:bg-white/[0.04] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="text-sm font-medium leading-tight">{label}</div>
-                <div className="text-[11px] text-slate-500 truncate">{caption}</div>
-              </div>
-            </Link>
+            <div key={id}>
+              {showDivider ? (
+                <div className="px-3 pt-4 pb-2 text-[10px] uppercase tracking-widest text-slate-600 font-mono">
+                  Advanced
+                </div>
+              ) : null}
+              <Link
+                href={href}
+                className={cn(
+                  "w-full rounded-xl px-3 py-2.5 flex items-center gap-3 transition-all border",
+                  isActive
+                    ? "bg-indigo-500/10 text-indigo-100 border-indigo-500/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
+                    : "text-slate-400 border-transparent hover:text-slate-100 hover:bg-white/[0.04] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]",
+                )}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium leading-tight flex items-center gap-1.5">
+                    {label}
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate">{caption}</div>
+                </div>
+              </Link>
+            </div>
           );
         })}
       </nav>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import * as Accordion from "@radix-ui/react-accordion";
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock3, Loader2, X, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInvestigationStore, type ModuleResultEntry, type PlaybookResults, type ResultStatus } from "@/store/useInvestigationStore";
@@ -28,116 +29,124 @@ function labelForModule(module: string, entry: ModuleResultEntry): string {
 }
 
 function ModuleEnvelope({ entry }: { entry: ModuleResultEntry }) {
-  const [tab, setTab] = useState<"overview" | "raw">("overview");
   const env = (entry.result ?? {}) as Envelope;
   const artifacts = env.artifacts ?? {};
   const artifactGroups = Object.entries(artifacts).filter(([, values]) => Array.isArray(values) && values.length > 0);
+  const totalArtifacts = artifactGroups.reduce((s, [, v]) => s + v.length, 0);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-        {["overview", "raw"].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t as "overview" | "raw")}
-            className={cn(
-              "px-3 py-1.5 text-[11px] font-mono tracking-widest uppercase transition-colors rounded-sm",
-              tab === t ? "bg-slate-800 text-slate-200 border border-slate-700" : "text-slate-500 border border-transparent hover:text-slate-300",
-            )}
-          >
-            {t === "overview" ? "Normalized" : "Raw JSON"}
-          </button>
-        ))}
+      {/* ── Errors first — visible without scrolling ── */}
+      {Array.isArray(env.errors) && env.errors.length > 0 ? (
+        <div className="rounded-sm border border-rose-900 bg-rose-950/30 px-3 py-2">
+          {env.errors.map((err, idx) => (
+            <div key={`${err.code ?? "err"}-${idx}`} className="text-[11px] font-mono text-rose-400">
+              <AlertCircle className="w-3 h-3 inline-block mr-1.5" />
+              {err.message ?? "Module failed"}
+              {err.hint ? <span className="text-rose-300/70 block mt-1 ml-4">• {err.hint}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* ── Summary header (always visible) ── */}
+      <div className="bg-[#08090A] border border-slate-800 rounded-sm p-3">
+        <div className="text-[11px] text-slate-400 font-mono tracking-wide mb-2">
+          <TerminalSquare className="w-3 h-3 inline-block mr-1.5" />
+          {env.summary?.title ?? "Module output"}
+        </div>
+        {env.summary?.stats && env.summary.stats.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {env.summary.stats.map((s) => (
+              <div key={s.label} className="border border-slate-800 bg-[#0C0C0E] rounded-sm px-2.5 py-2">
+                <div className="text-[10px] text-slate-500 uppercase font-mono tracking-widest">{s.label}</div>
+                <div className="text-xs text-slate-200 font-mono mt-1 truncate">{String(s.value)}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {tab === "raw" ? (
-        <pre className="text-[11px] text-slate-400 font-mono bg-[#08090A] rounded-sm border border-slate-800 p-3 overflow-auto max-h-80 whitespace-pre-wrap">
-          {JSON.stringify(env.raw ?? env, null, 2)}
-        </pre>
-      ) : (
-        <div className="space-y-4">
-          <div className="bg-[#08090A] border border-slate-800 rounded-sm p-3">
-            <div className="flex flex-col gap-3">
-              <div className="text-[11px] text-slate-400 font-mono tracking-wide">
-                <TerminalSquare className="w-3 h-3 inline-block mr-1.5" />
-                {env.summary?.title ?? "Module output"}
+      {/* ── Tables (always visible — the human-readable centerpiece) ── */}
+      {Array.isArray(env.tables) && env.tables.length > 0 ? (
+        <div className="space-y-3">
+          <div className="text-[10px] uppercase font-mono tracking-widest text-slate-500">Tabular Data</div>
+          {env.tables.slice(0, 3).map((table) => (
+            <div key={table.name} className="rounded-sm border border-slate-800 bg-[#0C0C0E] overflow-hidden">
+              <div className="px-3 py-2 bg-slate-900 border-b border-slate-800 text-[11px] font-mono tracking-wide text-slate-300">{table.name}</div>
+              <div className="overflow-auto max-h-64">
+                <table className="w-full text-[11px] font-mono">
+                  <thead className="bg-[#08090A] text-slate-500 sticky top-0">
+                    <tr>
+                      {table.columns.map((c) => (
+                        <th key={c} className="text-left px-3 py-2 border-b border-slate-800 font-normal">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.slice(0, 50).map((row, i) => (
+                      <tr key={`${table.name}-${i}`} className="border-b border-slate-800 hover:bg-slate-900/50 transition-colors last:border-0">
+                        {row.map((cell, j) => (
+                          <td key={`${i}-${j}`} className="px-3 py-1.5 text-slate-300">{cell === null ? "-" : String(cell)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              
-              {env.summary?.stats && env.summary.stats.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {env.summary.stats.map((s) => (
-                    <div key={s.label} className="border border-slate-800 bg-[#0C0C0E] rounded-sm px-2.5 py-2">
-                      <div className="text-[10px] text-slate-500 uppercase font-mono tracking-widest">{s.label}</div>
-                      <div className="text-xs text-slate-200 font-mono mt-1">{String(s.value)}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {/* ── Artifacts + Raw JSON: hidden behind Radix accordion ── */}
+      {(artifactGroups.length > 0 || env.raw) ? (
+        <Accordion.Root type="multiple" className="space-y-1.5">
+          {artifactGroups.length > 0 ? (
+            <Accordion.Item value="artifacts" className="rounded-sm border border-slate-800 bg-[#08090A] overflow-hidden">
+              <Accordion.Header>
+                <Accordion.Trigger className="group w-full flex items-center justify-between px-3 py-2 text-[11px] font-mono uppercase tracking-widest text-slate-400 hover:text-slate-200 transition-colors">
+                  <span>Collected Artifacts ({totalArtifacts})</span>
+                  <ChevronDown className="w-3.5 h-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                </Accordion.Trigger>
+              </Accordion.Header>
+              <Accordion.Content className="overflow-hidden">
+                <div className="px-3 pb-3 space-y-2">
+                  {artifactGroups.map(([name, values]) => (
+                    <div key={name} className="mt-1">
+                      <div className="text-[10px] text-slate-600 font-mono uppercase tracking-widest mb-1.5">{name}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {values.slice(0, 30).map((v) => (
+                          <span key={v} className="text-[11px] font-mono rounded-sm border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300">{v}</span>
+                        ))}
+                        {values.length > 30 ? (
+                          <span className="text-[10px] text-slate-600 self-center">+{values.length - 30} more</span>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
-              ) : null}
-            </div>
-          </div>
-
-          {artifactGroups.length > 0 ? (
-            <div className="space-y-2">
-              <div className="text-[10px] uppercase font-mono tracking-widest text-slate-500">Collected Artifacts</div>
-              {artifactGroups.map(([name, values]) => (
-                <div key={name} className="mt-1">
-                  <div className="text-[10px] text-slate-600 font-mono uppercase tracking-widest mb-1.5">{name}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {values.slice(0, 30).map((v) => (
-                      <span key={v} className="text-[11px] font-mono rounded-sm border border-slate-700 bg-slate-900 px-2 py-1 text-slate-300">
-                        {v}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+              </Accordion.Content>
+            </Accordion.Item>
           ) : null}
 
-          {Array.isArray(env.tables) && env.tables.length > 0 ? (
-            <div className="space-y-3">
-              <div className="text-[10px] uppercase font-mono tracking-widest text-slate-500">Tabular Data</div>
-              {env.tables.slice(0, 3).map((table) => (
-                <div key={table.name} className="rounded-sm border border-slate-800 bg-[#0C0C0E] overflow-hidden">
-                  <div className="px-3 py-2 bg-slate-900 border-b border-slate-800 text-[11px] font-mono tracking-wide text-slate-300">{table.name}</div>
-                  <div className="overflow-auto max-h-64">
-                    <table className="w-full text-[11px] font-mono">
-                      <thead className="bg-[#08090A] text-slate-500 sticky top-0">
-                        <tr>
-                          {table.columns.map((c) => (
-                            <th key={c} className="text-left px-3 py-2 border-b border-slate-800 font-normal">{c}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {table.rows.slice(0, 50).map((row, i) => (
-                          <tr key={`${table.name}-${i}`} className="border-b border-slate-800 hover:bg-slate-900/50 transition-colors last:border-0">
-                            {row.map((cell, j) => (
-                              <td key={`${i}-${j}`} className="px-3 py-1.5 text-slate-300">{cell === null ? "-" : String(cell)}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {env.raw ? (
+            <Accordion.Item value="raw" className="rounded-sm border border-slate-800 bg-[#08090A] overflow-hidden">
+              <Accordion.Header>
+                <Accordion.Trigger className="group w-full flex items-center justify-between px-3 py-2 text-[11px] font-mono uppercase tracking-widest text-slate-400 hover:text-slate-200 transition-colors">
+                  <span>View Raw Data (JSON)</span>
+                  <ChevronDown className="w-3.5 h-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                </Accordion.Trigger>
+              </Accordion.Header>
+              <Accordion.Content className="overflow-hidden">
+                <pre className="text-[11px] text-slate-400 font-mono bg-[#08090A] border-t border-slate-800 p-3 overflow-auto max-h-80 whitespace-pre-wrap break-all">
+                  {JSON.stringify(env.raw ?? env, null, 2)}
+                </pre>
+              </Accordion.Content>
+            </Accordion.Item>
           ) : null}
-
-          {Array.isArray(env.errors) && env.errors.length > 0 ? (
-            <div className="rounded-sm border border-rose-900 bg-rose-950/30 px-3 py-2">
-              {env.errors.map((err, idx) => (
-                <div key={`${err.code ?? "err"}-${idx}`} className="text-[11px] font-mono text-rose-400">
-                  <AlertCircle className="w-3 h-3 inline-block mr-1.5" />
-                  {err.message ?? "Module failed"}
-                  {err.hint ? <span className="text-rose-300/70 block mt-1 ml-4">• {err.hint}</span> : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      )}
+        </Accordion.Root>
+      ) : null}
     </div>
   );
 }

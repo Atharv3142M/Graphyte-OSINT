@@ -132,71 +132,110 @@ def _spawn_and_stream(
     stdout_thread.join(timeout=2)
     stderr_thread.join(timeout=2)
 
-    if killed.is_set():
-        redis_client.publish(
-            chan,
-            json.dumps(
-                {
-                    "stream": "stderr",
-                    "data": f"Task killed after {TASK_HARD_TIMEOUT}s timeout (SIGKILL)",
-                }
-            ),
-        )
-        redis_client.publish(chan, json.dumps({"type": "done", "killed": True, "error": True}))
-        if playbook_chan:
+    envelope: dict = {}
+    has_error = True
+    error_msg: Optional[str] = None
+
+    try:
+        if killed.is_set():
             redis_client.publish(
-                playbook_chan,
+                chan,
                 json.dumps(
                     {
-                        "type": "done",
-                        "module": module_name,
-                        "status": "failure",
-                        "error": f"Task timeout (SIGKILL after {TASK_HARD_TIMEOUT}s)",
+                        "stream": "stderr",
+                        "data": f"Task killed after {TASK_HARD_TIMEOUT}s timeout (SIGKILL)",
                     }
                 ),
             )
-        return {"error": "Task timeout (SIGKILL)", "success": False}
+            error_msg = f"Task timeout (SIGKILL after {TASK_HARD_TIMEOUT}s)"
+            envelope = normalize_result(module_name, {"error": error_msg, "success": False})
+            has_error = True
+            return envelope
 
-    out = stdout_lines[-1].strip() if stdout_lines else ""
-    try:
-        if not out:
-            # If nothing was printed to stdout, module likely crashed
-            err_msg = "\n".join(stderr_lines).strip() or "No output from module"
-            raw_result = {"error": err_msg, "success": False}
-        else:
-            raw_result = json.loads(out)
-    except json.JSONDecodeError:
-        raw_result = {"error": "Invalid JSON output", "raw": out[:500], "success": False}
+        # Robust JSON extraction: scan stdout lines from the END for the first
+        # parseable JSON object. This guarantees we still recover the result
+        # even if stray prints leaked through (third-party libs, deprecation
+        # warnings, etc.).
+        raw_result: dict | None = None
+        for line in reversed(stdout_lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                raw_result = parsed
+                break
 
-    envelope = normalize_result(module_name, raw_result if isinstance(raw_result, dict) else {"raw": raw_result})
+        if raw_result is None:
+            err_msg = "\n".join(stderr_lines[-20:]).strip() or "No output from module"
+            # Include first stdout line for debugging when JSON parsing failed
+            preview = (stdout_lines[0] if stdout_lines else "")[:500]
+            raw_result = {
+                "error": err_msg,
+                "stdout_preview": preview,
+                "success": False,
+            }
 
-    redis_client.publish(chan, json.dumps({"type": "result", "data": envelope}))
-    has_error = not bool(envelope.get("ok"))
-    error_msg = None
-    try:
-        errors = envelope.get("errors") or []
-        if errors and isinstance(errors, list) and isinstance(errors[0], dict):
-            error_msg = errors[0].get("message")
-    except Exception:
-        error_msg = None
-    redis_client.publish(chan, json.dumps({"type": "done", "error": has_error, "error_msg": error_msg}))
-    if playbook_chan:
-        redis_client.publish(
-            playbook_chan,
-            json.dumps({"type": "result", "module": module_name, "data": envelope}),
+        envelope = normalize_result(module_name, raw_result)
+        has_error = not bool(envelope.get("ok"))
+        try:
+            errors = envelope.get("errors") or []
+            if errors and isinstance(errors, list) and isinstance(errors[0], dict):
+                error_msg = errors[0].get("message")
+        except Exception:
+            error_msg = None
+        return envelope
+
+    except Exception as e:
+        # Last-resort safety net: never let an exception in this function
+        # silently leave the WS hanging without a `done` event.
+        envelope = normalize_result(
+            module_name,
+            {"error": f"tasks._spawn_and_stream crashed: {e}", "success": False},
         )
-        redis_client.publish(
-            playbook_chan,
-            json.dumps(
-                {
-                    "type": "done",
-                    "module": module_name,
-                    "status": "failure" if has_error else "success",
-                    "error": error_msg if has_error else None,
-                }
-            ),
-        )
-    return envelope
+        has_error = True
+        error_msg = str(e)
+        return envelope
+
+    finally:
+        # ALWAYS publish result + done so frontends never wait forever.
+        try:
+            redis_client.publish(chan, json.dumps({"type": "result", "data": envelope}))
+        except Exception:
+            pass
+        try:
+            done_payload = {
+                "type": "done",
+                "error": bool(has_error),
+                "error_msg": error_msg,
+            }
+            if killed.is_set():
+                done_payload["killed"] = True
+            redis_client.publish(chan, json.dumps(done_payload))
+        except Exception:
+            pass
+        if playbook_chan:
+            try:
+                redis_client.publish(
+                    playbook_chan,
+                    json.dumps({"type": "result", "module": module_name, "data": envelope}),
+                )
+                redis_client.publish(
+                    playbook_chan,
+                    json.dumps(
+                        {
+                            "type": "done",
+                            "module": module_name,
+                            "status": "failure" if has_error else "success",
+                            "error": error_msg if has_error else None,
+                        }
+                    ),
+                )
+            except Exception:
+                pass
 
 
 def _ingest_stix_bundle(module_name: str, envelope: dict) -> None:
