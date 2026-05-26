@@ -220,6 +220,44 @@ def main() -> None:
                     timeout=payload.get("timeout", 10),
                     max_connections=payload.get("max_connections", 5),
                 )
+            elif module_name == "robots_sitemap":
+                from backend.modules.robots_sitemap import robots_sitemap_ingest
+
+                result = robots_sitemap_ingest(
+                    payload.get("domain", ""),
+                    max_sitemap_urls=payload.get("max_sitemap_urls", 200),
+                )
+            elif module_name == "favicon_hash":
+                from backend.modules.favicon_hash import favicon_hash_lookup
+
+                result = favicon_hash_lookup(payload.get("domain", ""))
+            elif module_name == "username_permutator":
+                from backend.modules.username_permutator import username_permutate
+
+                result = username_permutate(
+                    payload.get("seed", ""),
+                    max_results=payload.get("max_results", 50),
+                )
+            elif module_name == "github_osint":
+                from backend.modules.github_osint import github_osint_lookup
+
+                result = github_osint_lookup(
+                    payload.get("target", ""),
+                    lookup_type=payload.get("lookup_type", "auto"),
+                    api_token=service_config.get("api_token") or payload.get("api_token"),
+                    max_repos=payload.get("max_repos", 30),
+                )
+            elif module_name == "phone_intel":
+                from backend.modules.phone_intel import phone_intel_lookup
+
+                result = phone_intel_lookup(
+                    payload.get("number", ""),
+                    default_region=payload.get("default_region", "US"),
+                )
+            elif module_name == "email_reputation":
+                from backend.modules.email_reputation import email_reputation_check
+
+                result = email_reputation_check(payload.get("email", ""))
             else:
                 result = {"error": f"Unknown module: {module_name}", "success": False}
     except Exception as e:

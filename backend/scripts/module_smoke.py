@@ -147,6 +147,12 @@ def cases() -> list[Case]:
         # ingest can be slow / depends on Weaviate; keep out of default smoke.
         Case("shodan", "/api/shodan", {"target": "example.com", "api_key": None}, _classify_default),
         Case("censys", "/api/censys", {"target": "example.com", "api_id": None, "api_secret": None}, _classify_default),
+        Case("robots-sitemap", "/api/robots-sitemap", {"domain": "example.com", "max_sitemap_urls": 20}, _classify_default),
+        Case("favicon-hash", "/api/favicon-hash", {"domain": "example.com"}, _classify_default),
+        Case("username-permutator", "/api/username-permutator", {"seed": "john.doe", "max_results": 20}, _classify_default),
+        Case("github-osint", "/api/github-osint", {"target": "torvalds", "lookup_type": "username"}, _classify_default),
+        Case("phone-intel", "/api/phone-intel", {"number": "+14155552671", "default_region": "US"}, _classify_default),
+        Case("email-reputation", "/api/email-reputation", {"email": "test@example.com"}, _classify_default),
         # metadata-extract intentionally omitted from default suite (needs a real file path)
     ]
 

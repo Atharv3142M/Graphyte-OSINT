@@ -57,6 +57,8 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
         "tasks.http_security",
         "tasks.tech_stack",
         "tasks.cert_transparency",
+        "tasks.robots_sitemap",
+        "tasks.favicon_hash",
         "tasks.cyberninja_passive",
         "tasks.xrecon",
         "tasks.wayback_machine",
@@ -70,6 +72,8 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
         "tasks.ssl_analyze",
         "tasks.http_security",
         "tasks.tech_stack",
+        "tasks.robots_sitemap",
+        "tasks.favicon_hash",
         "tasks.deep_scraper",
         "tasks.graysentinel_ingest",
         "tasks.xrecon",
@@ -78,6 +82,8 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
 
     # ── Email ──────────────────────────────────────────────────────────────────
     "email": [
+        "tasks.email_reputation",
+        "tasks.username_permutator",
         "tasks.social_hunter",
         "tasks.cert_transparency",
         "tasks.xrecon",
@@ -85,6 +91,8 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
 
     # ── Username ───────────────────────────────────────────────────────────────
     "username": [
+        "tasks.username_permutator",
+        "tasks.github_osint",
         "tasks.social_hunter",
         "tasks.sherlock_hunt",
         "tasks.xrecon",
@@ -104,6 +112,7 @@ ROUTING_MAP: Final[dict[str, list[str]]] = {
 
     # ── Phone ───────────────────────────────────────────────────────────────────
     "phone": [
+        "tasks.phone_intel",
         "tasks.xrecon",
         "tasks.cyberninja_passive",
     ],
@@ -148,6 +157,12 @@ MODULE_NAMES: Final[dict[str, str]] = {
     "tasks.wayback_machine": "Wayback Machine",
     "tasks.email_header_analyzer": "Email Header",
     "tasks.sherlock_hunt": "Sherlock",
+    "tasks.robots_sitemap": "Robots & Sitemap",
+    "tasks.favicon_hash": "Favicon Hash",
+    "tasks.username_permutator": "Username Permutator",
+    "tasks.github_osint": "GitHub OSINT",
+    "tasks.phone_intel": "Phone Intel",
+    "tasks.email_reputation": "Email Reputation",
 }
 
 # ── Intensity tiers ────────────────────────────────────────────────────────────

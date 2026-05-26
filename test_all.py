@@ -28,6 +28,12 @@ MODULES: list[tuple[str, dict]] = [
     ("wayback_machine", {"target": "example.com", "limit": 5}),
     ("email_header_analyzer", {"raw_headers": "From: a@example.com\r\nTo: b@example.com\r\n"}),
     ("sherlock_hunt", {"username": "torvalds", "timeout": 5, "max_connections": 3}),
+    ("robots_sitemap", {"domain": "github.com", "max_sitemap_urls": 10}),
+    ("favicon_hash", {"domain": "github.com"}),
+    ("username_permutator", {"seed": "john.doe", "max_results": 20}),
+    ("github_osint", {"target": "torvalds", "lookup_type": "username"}),
+    ("phone_intel", {"number": "+14155552671", "default_region": "US"}),
+    ("email_reputation", {"email": "user@example.com"}),
 ]
 
 TIMEOUTS: dict[str, int] = {
@@ -36,6 +42,8 @@ TIMEOUTS: dict[str, int] = {
     "deep_scraper": 90,
     "dns_intel": 90,
     "cyberninja_passive": 60,
+    "github_osint": 30,
+    "robots_sitemap": 45,
 }
 
 

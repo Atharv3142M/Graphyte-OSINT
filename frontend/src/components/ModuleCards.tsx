@@ -20,6 +20,12 @@ import {
   Archive,
   MailSearch,
   UserCheck,
+  FileText,
+  Image,
+  Shuffle,
+  Github,
+  Phone,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { runModule, WS_BASE, createTaskStream, type ModuleEndpoint } from "@/lib/api";
@@ -190,6 +196,66 @@ const MODULES: ModuleDef[] = [
     icon: UserCheck,
     endpoint: "/api/sherlock",
     fields: [{ name: "username", label: "Username", placeholder: "torvalds", type: "text", required: true }],
+  },
+  {
+    id: "robots-sitemap",
+    label: "Robots & Sitemap",
+    description: "Parse robots.txt rules and extract URLs from sitemap.xml — keyless.",
+    icon: FileText,
+    endpoint: "/api/robots-sitemap",
+    fields: [
+      { name: "domain", label: "Domain", placeholder: "example.com", type: "text", required: true },
+      { name: "max_sitemap_urls", label: "Max URLs", placeholder: "200", type: "number", defaultValue: 200 },
+    ],
+  },
+  {
+    id: "favicon-hash",
+    label: "Favicon Hash",
+    description: "Shodan-style MurmurHash3 fingerprint of site favicon.",
+    icon: Image,
+    endpoint: "/api/favicon-hash",
+    fields: [{ name: "domain", label: "Domain", placeholder: "example.com", type: "text", required: true }],
+  },
+  {
+    id: "username-permutator",
+    label: "Username Permutator",
+    description: "Generate username candidates from a name, email, or handle.",
+    icon: Shuffle,
+    endpoint: "/api/username-permutator",
+    fields: [
+      { name: "seed", label: "Seed", placeholder: "john.doe or johndoe@mail.com", type: "text", required: true },
+      { name: "max_results", label: "Max results", placeholder: "50", type: "number", defaultValue: 50 },
+    ],
+  },
+  {
+    id: "github-osint",
+    label: "GitHub OSINT",
+    description: "Public profile and repos (optional GITHUB_TOKEN for higher limits).",
+    icon: Github,
+    endpoint: "/api/github-osint",
+    fields: [
+      { name: "target", label: "Username or org", placeholder: "torvalds", type: "text", required: true },
+      { name: "lookup_type", label: "Type (auto/username/org)", placeholder: "auto", type: "text", defaultValue: "auto" },
+    ],
+  },
+  {
+    id: "phone-intel",
+    label: "Phone Intel",
+    description: "Parse number, region, carrier, and timezone via libphonenumber.",
+    icon: Phone,
+    endpoint: "/api/phone-intel",
+    fields: [
+      { name: "number", label: "Phone", placeholder: "+14155552671", type: "text", required: true },
+      { name: "default_region", label: "Region hint", placeholder: "US", type: "text", defaultValue: "US" },
+    ],
+  },
+  {
+    id: "email-reputation",
+    label: "Email Reputation",
+    description: "Disposable domain check and MX validation — keyless.",
+    icon: Mail,
+    endpoint: "/api/email-reputation",
+    fields: [{ name: "email", label: "Email", placeholder: "user@example.com", type: "text", required: true }],
   },
 ];
 

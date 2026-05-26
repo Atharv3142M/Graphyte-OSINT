@@ -119,6 +119,9 @@ def _stats_from_raw(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         "tech_count",
         "san_count",
         "found_count",
+        "url_count",
+        "repo_count",
+        "favicon_hash",
     ):
         if k in raw and raw.get(k) is not None:
             stats.append({"label": k.replace("_", " ").title(), "value": raw.get(k)})
@@ -150,9 +153,24 @@ def _title_for_module(module_name: str, raw: Dict[str, Any]) -> str:
         "censys_recon": "Censys Recon",
         "xrecon": "xRecon",
         "metadata_extractor": "Metadata Extractor",
+        "robots_sitemap": "Robots & Sitemap",
+        "favicon_hash": "Favicon Hash",
+        "username_permutator": "Username Permutator",
+        "github_osint": "GitHub OSINT",
+        "phone_intel": "Phone Intel",
+        "email_reputation": "Email Reputation",
     }
     title = overrides.get(module_name, base)
-    target = raw.get("target") or raw.get("domain") or raw.get("host") or raw.get("url") or raw.get("username")
+    target = (
+        raw.get("target")
+        or raw.get("domain")
+        or raw.get("host")
+        or raw.get("url")
+        or raw.get("username")
+        or raw.get("email")
+        or raw.get("seed")
+        or raw.get("number")
+    )
     if isinstance(target, str) and target:
         return f"{title}: {target}"
     return title
@@ -215,6 +233,22 @@ def normalize_result(module_name: str, raw_result: Any) -> Dict[str, Any]:
             tables.append(t)
     if isinstance(raw.get("sources"), list) and raw.get("sources"):
         t = _maybe_table("sources", raw.get("sources"))
+        if t:
+            tables.append(t)
+    if isinstance(raw.get("sitemap_urls"), list) and raw.get("sitemap_urls"):
+        t = _maybe_table("sitemap_urls", raw.get("sitemap_urls"))
+        if t:
+            tables.append(t)
+    if isinstance(raw.get("permutations"), list):
+        rows = [{"username": u} for u in raw.get("permutations", [])[:200] if isinstance(u, str)]
+        if rows:
+            tables.append({"name": "permutations", "columns": ["username"], "rows": [[r["username"]] for r in rows]})
+    if isinstance(raw.get("repositories"), list) and raw.get("repositories"):
+        t = _maybe_table("repositories", raw.get("repositories"))
+        if t:
+            tables.append(t)
+    if isinstance(raw.get("robots"), dict) and isinstance(raw["robots"].get("rules"), list):
+        t = _maybe_table("robots_rules", raw["robots"]["rules"])
         if t:
             tables.append(t)
 

@@ -209,7 +209,13 @@ export type ModuleEndpoint =
   | "/api/bgp-asn"
   | "/api/wayback"
   | "/api/email-header"
-  | "/api/sherlock";
+  | "/api/sherlock"
+  | "/api/robots-sitemap"
+  | "/api/favicon-hash"
+  | "/api/username-permutator"
+  | "/api/github-osint"
+  | "/api/phone-intel"
+  | "/api/email-reputation";
 
 export async function runModule(
   endpoint: ModuleEndpoint,

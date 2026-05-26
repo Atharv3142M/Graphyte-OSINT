@@ -41,6 +41,9 @@ def _fetch_credentials(service: str, tenant_id: Optional[str] = None) -> Dict[st
         api_id = os.getenv("VAULT_CENSYS_API_ID", "") or os.getenv("CENSYS_API_ID", "")
         api_secret = os.getenv("VAULT_CENSYS_API_SECRET", "") or os.getenv("CENSYS_API_SECRET", "")
         return {"api_id": api_id, "api_secret": api_secret}
+    if service == "github":
+        token = os.getenv("VAULT_GITHUB_TOKEN", "") or os.getenv("GITHUB_TOKEN", "")
+        return {"api_token": token} if token else {}
     return {}
 
 

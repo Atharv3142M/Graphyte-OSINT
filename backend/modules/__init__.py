@@ -18,6 +18,12 @@ from .xrecon import xrecon_search
 from .social_hunter import social_hunter
 from .cert_transparency import cert_transparency
 from .deep_scraper import deep_scraper
+from .robots_sitemap import robots_sitemap_ingest
+from .favicon_hash import favicon_hash_lookup
+from .username_permutator import username_permutate
+from .github_osint import github_osint_lookup
+from .phone_intel import phone_intel_lookup
+from .email_reputation import email_reputation_check
 
 __all__ = [
     "shodan_search",
@@ -36,4 +42,10 @@ __all__ = [
     "social_hunter",
     "cert_transparency",
     "deep_scraper",
+    "robots_sitemap_ingest",
+    "favicon_hash_lookup",
+    "username_permutate",
+    "github_osint_lookup",
+    "phone_intel_lookup",
+    "email_reputation_check",
 ]

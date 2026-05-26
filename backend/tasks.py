@@ -25,6 +25,7 @@ REDIS_CHAN_PREFIX = "osint:task:stream:"
 MODULE_SECRET_SERVICE: Dict[str, str] = {
     "shodan_recon": "shodan",
     "censys_recon": "censys",
+    "github_osint": "github",
 }
 
 
@@ -603,3 +604,101 @@ def task_sherlock_hunt(
     payload = {"username": username, "timeout": timeout, "max_connections": max_connections}
     redis_client = _get_redis()
     return _run_module_subprocess("sherlock_hunt", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.robots_sitemap",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_robots_sitemap(
+    self,
+    domain: str,
+    max_sitemap_urls: int = 200,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
+):
+    payload = {"domain": domain, "max_sitemap_urls": max_sitemap_urls}
+    redis_client = _get_redis()
+    return _run_module_subprocess("robots_sitemap", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.favicon_hash",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_favicon_hash(self, domain: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"domain": domain}
+    redis_client = _get_redis()
+    return _run_module_subprocess("favicon_hash", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.username_permutator",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_username_permutator(
+    self,
+    seed: str,
+    max_results: int = 50,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
+):
+    payload = {"seed": seed, "max_results": max_results}
+    redis_client = _get_redis()
+    return _run_module_subprocess("username_permutator", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.github_osint",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_github_osint(
+    self,
+    target: str,
+    lookup_type: str = "auto",
+    api_token: str | None = None,
+    max_repos: int = 30,
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
+):
+    payload = {"target": target, "lookup_type": lookup_type, "api_token": api_token, "max_repos": max_repos}
+    redis_client = _get_redis()
+    return _run_module_subprocess("github_osint", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.phone_intel",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_phone_intel(
+    self,
+    number: str,
+    default_region: str = "US",
+    playbook_id: str | None = None,
+    playbook_chan: str | None = None,
+):
+    payload = {"number": number, "default_region": default_region}
+    redis_client = _get_redis()
+    return _run_module_subprocess("phone_intel", payload, self.request.id, redis_client, playbook_chan)
+
+
+@celery_app.task(
+    bind=True,
+    name="tasks.email_reputation",
+    soft_time_limit=TASK_HARD_TIMEOUT,
+    time_limit=TASK_HARD_TIMEOUT + 10,
+)
+def task_email_reputation(self, email: str, playbook_id: str | None = None, playbook_chan: str | None = None):
+    payload = {"email": email}
+    redis_client = _get_redis()
+    return _run_module_subprocess("email_reputation", payload, self.request.id, redis_client, playbook_chan)

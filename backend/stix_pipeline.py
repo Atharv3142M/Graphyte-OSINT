@@ -1051,6 +1051,127 @@ def build_stix_bundle(module_name: str, result: Dict[str, Any]) -> Dict[str, Any
                 relate(ident["id"], account["id"], "associated-with")
 
     # -------------------------------------------------------------------------
+    # robots_sitemap / favicon_hash / username_permutator / github / phone / email
+    # -------------------------------------------------------------------------
+    elif module_name == "robots_sitemap":
+        domain = result.get("domain", "")
+        if domain:
+            dom_obj = {"type": "domain-name", "id": _obj_id("domain-name"), "value": domain}
+            register(dom_obj)
+            note_obj = {
+                "type": "note",
+                "id": _obj_id("note"),
+                "created": now,
+                "modified": now,
+                "abstract": f"Robots/sitemap ingest for {domain}",
+                "content": {
+                    "url_count": result.get("url_count"),
+                    "robots_url": result.get("robots_url"),
+                },
+            }
+            register(note_obj)
+            relate(dom_obj["id"], note_obj["id"], "contextualizes")
+            for row in (result.get("sitemap_urls") or [])[:40]:
+                loc = row.get("loc") if isinstance(row, dict) else None
+                if loc and str(loc).startswith("http"):
+                    u = {"type": "url", "id": _obj_id("url"), "value": str(loc), "x_source": "robots_sitemap"}
+                    register(u)
+                    relate(note_obj["id"], u["id"], "contains")
+
+    elif module_name == "favicon_hash":
+        domain = result.get("domain", "")
+        if domain:
+            dom_obj = {"type": "domain-name", "id": _obj_id("domain-name"), "value": domain}
+            register(dom_obj)
+            note_obj = {
+                "type": "note",
+                "id": _obj_id("note"),
+                "created": now,
+                "modified": now,
+                "abstract": f"Favicon hash for {domain}",
+                "content": {
+                    "favicon_hash": result.get("favicon_hash"),
+                    "favicon_url": result.get("favicon_url"),
+                },
+            }
+            register(note_obj)
+            relate(dom_obj["id"], note_obj["id"], "contextualizes")
+
+    elif module_name == "username_permutator":
+        seed = result.get("seed", "")
+        if seed:
+            ident = {
+                "type": "identity",
+                "id": _obj_id("identity"),
+                "name": seed,
+                "identity_class": "individual",
+                "x_identity_type": "username-seed",
+            }
+            register(ident)
+            for u in (result.get("permutations") or [])[:30]:
+                if isinstance(u, str):
+                    acct = {
+                        "type": "user-account",
+                        "id": _obj_id("user-account"),
+                        "account_login": u,
+                        "x_generated": True,
+                    }
+                    register(acct)
+                    relate(ident["id"], acct["id"], "related-to")
+
+    elif module_name == "github_osint":
+        target = result.get("target", "")
+        profile = result.get("profile") or {}
+        if target:
+            ident = {
+                "type": "identity",
+                "id": _obj_id("identity"),
+                "name": profile.get("login") or target,
+                "identity_class": "individual",
+                "x_identity_type": "github",
+            }
+            register(ident)
+            if profile.get("html_url"):
+                u = {"type": "url", "id": _obj_id("url"), "value": profile["html_url"], "x_source": "github"}
+                register(u)
+                relate(ident["id"], u["id"], "related-to")
+            for repo in (result.get("repositories") or [])[:25]:
+                if isinstance(repo, dict) and repo.get("html_url"):
+                    ru = {"type": "url", "id": _obj_id("url"), "value": repo["html_url"], "x_source": "github_repo"}
+                    register(ru)
+                    relate(ident["id"], ru["id"], "related-to")
+
+    elif module_name == "phone_intel":
+        e164 = result.get("e164")
+        if e164:
+            note_obj = {
+                "type": "note",
+                "id": _obj_id("note"),
+                "created": now,
+                "modified": now,
+                "abstract": f"Phone intel: {e164}",
+                "content": result,
+            }
+            register(note_obj)
+
+    elif module_name == "email_reputation":
+        email = result.get("email", "")
+        if email:
+            ident = {
+                "type": "identity",
+                "id": _obj_id("identity"),
+                "name": email,
+                "identity_class": "individual",
+                "x_identity_type": "email",
+            }
+            register(ident)
+            dom = result.get("domain")
+            if dom:
+                d = {"type": "domain-name", "id": _obj_id("domain-name"), "value": dom}
+                register(d)
+                relate(ident["id"], d["id"], "related-to")
+
+    # -------------------------------------------------------------------------
     # Merge all relationships into the bundle
     # -------------------------------------------------------------------------
     objects.extend(relationships)

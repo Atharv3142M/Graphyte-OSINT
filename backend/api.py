@@ -30,6 +30,8 @@ from backend.tasks import (
     task_social_hunter, task_cert_transparency, task_deep_scraper,
     task_ip_geolocation, task_reverse_ip_lookup, task_bgp_asn_lookup,
     task_wayback_machine, task_email_header_analyzer, task_sherlock_hunt,
+    task_robots_sitemap, task_favicon_hash, task_username_permutator,
+    task_github_osint, task_phone_intel, task_email_reputation,
 )
 from backend.reporting_engine import (
     generate_executive_summary,
@@ -277,6 +279,36 @@ class SherlockRequest(BaseModel):
     username: str
     timeout: int = 10
     max_connections: int = 5
+
+
+class RobotsSitemapRequest(BaseModel):
+    domain: str
+    max_sitemap_urls: int = 200
+
+
+class FaviconHashRequest(BaseModel):
+    domain: str
+
+
+class UsernamePermutatorRequest(BaseModel):
+    seed: str
+    max_results: int = 50
+
+
+class GithubOsintRequest(BaseModel):
+    target: str
+    lookup_type: str = "auto"
+    api_token: str | None = None
+    max_repos: int = 30
+
+
+class PhoneIntelRequest(BaseModel):
+    number: str
+    default_region: str = "US"
+
+
+class EmailReputationRequest(BaseModel):
+    email: str
 
 
 class IngestRequest(BaseModel):
@@ -582,6 +614,58 @@ def api_email_header(req: EmailHeaderRequest, x_tenant_id: Optional[str] = Heade
     return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
 
 
+@app.post("/api/robots-sitemap")
+def api_robots_sitemap(req: RobotsSitemapRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    if _is_ssrf_blocked(req.domain):
+        raise HTTPException(status_code=400, detail="Blocked target by SSRF policy")
+    _log_audit(x_tenant_id, "robots_sitemap", req.domain, "initiated")
+    _publish_event("osint.investigation.started", {"action": "robots_sitemap", "target": req.domain})
+    t = task_robots_sitemap.delay(req.domain, req.max_sitemap_urls)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/favicon-hash")
+def api_favicon_hash(req: FaviconHashRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    if _is_ssrf_blocked(req.domain):
+        raise HTTPException(status_code=400, detail="Blocked target by SSRF policy")
+    _log_audit(x_tenant_id, "favicon_hash", req.domain, "initiated")
+    _publish_event("osint.investigation.started", {"action": "favicon_hash", "target": req.domain})
+    t = task_favicon_hash.delay(req.domain)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/username-permutator")
+def api_username_permutator(req: UsernamePermutatorRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "username_permutator", req.seed[:100], "initiated")
+    _publish_event("osint.investigation.started", {"action": "username_permutator", "target": req.seed[:100]})
+    t = task_username_permutator.delay(req.seed, req.max_results)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/github-osint")
+def api_github_osint(req: GithubOsintRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "github_osint", req.target[:100], "initiated")
+    _publish_event("osint.investigation.started", {"action": "github_osint", "target": req.target[:100]})
+    t = task_github_osint.delay(req.target, req.lookup_type, req.api_token, req.max_repos)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/phone-intel")
+def api_phone_intel(req: PhoneIntelRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "phone_intel", req.number[:50], "initiated")
+    _publish_event("osint.investigation.started", {"action": "phone_intel", "target": req.number[:50]})
+    t = task_phone_intel.delay(req.number, req.default_region)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
+@app.post("/api/email-reputation")
+def api_email_reputation(req: EmailReputationRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
+    _log_audit(x_tenant_id, "email_reputation", req.email[:100], "initiated")
+    _publish_event("osint.investigation.started", {"action": "email_reputation", "target": req.email[:100]})
+    t = task_email_reputation.delay(req.email)
+    return {"task_id": t.id, "status": "queued", "stream_url": f"/ws/task/{t.id}", "result_url": f"/api/tasks/{t.id}"}
+
+
 @app.post("/api/sherlock")
 def api_sherlock(req: SherlockRequest, x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")):
     _log_audit(x_tenant_id, "sherlock_hunt", req.username, "initiated")
@@ -688,6 +772,8 @@ def api_investigate(
             task_graysentinel_ingest,
             task_ip_geolocation, task_reverse_ip_lookup, task_bgp_asn_lookup,
             task_wayback_machine, task_email_header_analyzer, task_sherlock_hunt,
+            task_robots_sitemap, task_favicon_hash, task_username_permutator,
+            task_github_osint, task_phone_intel, task_email_reputation,
         )
 
         TASK_MAP: dict[str, callable] = {
@@ -711,7 +797,20 @@ def api_investigate(
             "tasks.wayback_machine": task_wayback_machine,
             "tasks.email_header_analyzer": task_email_header_analyzer,
             "tasks.sherlock_hunt": task_sherlock_hunt,
+            "tasks.robots_sitemap": task_robots_sitemap,
+            "tasks.favicon_hash": task_favicon_hash,
+            "tasks.username_permutator": task_username_permutator,
+            "tasks.github_osint": task_github_osint,
+            "tasks.phone_intel": task_phone_intel,
+            "tasks.email_reputation": task_email_reputation,
         }
+
+        def _domain_from_target(target: str) -> str:
+            t = target.strip()
+            if t.startswith("http://") or t.startswith("https://"):
+                from urllib.parse import urlparse
+                return urlparse(t).netloc or t
+            return t.split("/")[0]
 
         # Build arguments per task based on its signature
         def build_args(task_name: str, target: str) -> tuple:
@@ -755,6 +854,19 @@ def api_investigate(
                 return (target,)
             elif task_name == "tasks.sherlock_hunt":
                 return (target, 10, 5)
+            elif task_name == "tasks.robots_sitemap":
+                return (_domain_from_target(target), 200)
+            elif task_name == "tasks.favicon_hash":
+                return (_domain_from_target(target),)
+            elif task_name == "tasks.username_permutator":
+                seed = target.split("@", 1)[0] if "@" in target else target
+                return (seed, 50)
+            elif task_name == "tasks.github_osint":
+                return (target.lstrip("@"), "auto", None, 30)
+            elif task_name == "tasks.phone_intel":
+                return (target, "US")
+            elif task_name == "tasks.email_reputation":
+                return (target,)
             else:
                 return (target,)
 
