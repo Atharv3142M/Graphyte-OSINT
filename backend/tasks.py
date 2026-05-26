@@ -439,7 +439,7 @@ def task_metadata_extract(self, file_path: str, playbook_id: str | None = None, 
 def task_graysentinel_ingest(self, urls: list[str], strategies: list[str] | None = None, playbook_id: str | None = None, playbook_chan: str | None = None):
     payload = {"urls": urls, "strategies": strategies}
     redis_client = _get_redis()
-    return _run_module_subprocess("graysentinel_pipeline", payload, self.request.id, redis_client, playbook_chan)
+    return _run_module_subprocess("graysentinel_ingest", payload, self.request.id, redis_client, playbook_chan)
 
 
 @celery_app.task(

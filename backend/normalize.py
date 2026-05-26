@@ -110,7 +110,16 @@ def _maybe_table(name: str, value: Any) -> Dict[str, Any] | None:
 
 def _stats_from_raw(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     stats: List[Dict[str, Any]] = []
-    for k in ("status_code", "grade", "score", "count", "pages_crawled", "tech_count", "san_count"):
+    for k in (
+        "status_code",
+        "grade",
+        "score",
+        "count",
+        "pages_crawled",
+        "tech_count",
+        "san_count",
+        "found_count",
+    ):
         if k in raw and raw.get(k) is not None:
             stats.append({"label": k.replace("_", " ").title(), "value": raw.get(k)})
     return stats
@@ -202,6 +211,10 @@ def normalize_result(module_name: str, raw_result: Any) -> Dict[str, Any]:
             tables.append(t)
     if isinstance(raw.get("technologies"), list):
         t = _maybe_table("technologies", raw.get("technologies"))
+        if t:
+            tables.append(t)
+    if isinstance(raw.get("sources"), list) and raw.get("sources"):
+        t = _maybe_table("sources", raw.get("sources"))
         if t:
             tables.append(t)
 

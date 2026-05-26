@@ -68,152 +68,169 @@ def main() -> None:
     # Everything below runs with stdout silently redirected to stderr.
     # We only print the final JSON to the real stdout in the cleanup block.
     try:
-      with _redirect_stdout_to_stderr():
-        if module_name == "shodan_recon":
-            from backend.modules.shodan_recon import shodan_search
+        with _redirect_stdout_to_stderr():
+            if module_name == "shodan_recon":
+                from backend.modules.shodan_recon import shodan_search
 
-            api_key = service_config.get("api_key") or payload.get("api_key")
-            result = shodan_search(
-                payload.get("target", ""),
-                api_key,
-            )
-        elif module_name == "censys_recon":
-            from backend.modules.censys_recon import censys_search
-
-            api_id = service_config.get("api_id") or payload.get("api_id")
-            api_secret = service_config.get("api_secret") or payload.get("api_secret")
-            result = censys_search(
-                payload.get("target", ""),
-                api_id,
-                api_secret,
-            )
-        elif module_name == "scraper":
-            from backend.modules.scraper import scrape_urls
-
-            result = scrape_urls(
-                payload.get("urls", []),
-                payload.get("max_workers", 5),
-            )
-        elif module_name == "port_scanner":
-            from backend.modules.port_scanner import scan_ports
-
-            result = scan_ports(
-                payload.get("host", ""),
-                payload.get("ports"),
-                payload.get("max_workers", 20),
-                payload.get("timeout", 2.0),
-            )
-        elif module_name == "graysentinel_ingest":
-            from backend.modules.graysentinel_pipeline import run_pipeline
-            result = run_pipeline(
-                payload.get("urls", []),
-                payload.get("strategies"),
-            )
-        elif module_name == "cyberninja_passive":
-            try:
-                from backend.modules.cyberninja_passive import cyberninja_passive
-            except ImportError:
-                result = {"error": "CyberNinja passive module not available"}
-            else:
-                result = cyberninja_passive(
-                    payload.get("usernames", []),
-                    timeout=payload.get("timeout"),
-                    site_list=payload.get("site_list"),
+                api_key = service_config.get("api_key") or payload.get("api_key")
+                result = shodan_search(
+                    payload.get("target", ""),
+                    api_key,
                 )
-        elif module_name == "xrecon":
-            from backend.modules.xrecon import xrecon_search
-            result = xrecon_search(
-                payload.get("query", ""),
-                payload.get("query_type", "username"),
-            )
-        elif module_name == "dns_intel":
-            from backend.modules.dns_intel import dns_recon
-            result = dns_recon(
-                payload.get("domain", ""),
-                discover_subdomains=payload.get("brute_subdomains", False),
-                subdomain_wordlist=payload.get("wordlist"),
-            )
-        elif module_name == "whois_lookup":
-            from backend.modules.whois_lookup import whois_lookup
-            result = whois_lookup(payload.get("domain", ""))
-        elif module_name == "ssl_analyzer":
-            from backend.modules.ssl_analyzer import ssl_analyze
-            result = ssl_analyze(
-                payload.get("host", ""),
-                port=payload.get("port", 443),
-                timeout=payload.get("timeout", 10),
-            )
-        elif module_name == "http_security":
-            from backend.modules.http_security import http_security_audit
-            result = http_security_audit(
-                payload.get("url", ""),
-                timeout=payload.get("timeout", 10),
-            )
-        elif module_name == "tech_stack":
-            from backend.modules.tech_stack import detect_tech_stack
-            result = detect_tech_stack(
-                payload.get("url", ""),
-                timeout=payload.get("timeout", 10),
-            )
-        elif module_name == "metadata_extractor":
-            from backend.modules.metadata_extractor import extract_metadata
-            result = extract_metadata(payload.get("file_path", ""))
-        elif module_name == "social_hunter":
-            from backend.modules.social_hunter import social_hunter
-            result = social_hunter(
-                payload.get("username", ""),
-                max_concurrent=payload.get("max_concurrent", 20),
-            )
-        elif module_name == "cert_transparency":
-            from backend.modules.cert_transparency import cert_transparency
-            result = cert_transparency(
-                payload.get("domain", ""),
-                use_html_fallback=payload.get("use_html_fallback", True),
-            )
-        elif module_name == "deep_scraper":
-            from backend.modules.deep_scraper import deep_scraper
-            result = deep_scraper(
-                payload.get("url", ""),
-                max_depth=payload.get("max_depth", 2),
-                max_pages=payload.get("max_pages", 50),
-                max_concurrent=payload.get("max_concurrent", 10),
-            )
-        elif module_name == "ip_geolocation":
-            from backend.modules.ip_geolocation import ip_geolocation
-            result = ip_geolocation(payload.get("target", ""))
-        elif module_name == "reverse_ip_lookup":
-            from backend.modules.reverse_ip_lookup import reverse_ip_lookup
-            result = reverse_ip_lookup(payload.get("target", ""))
-        elif module_name == "bgp_asn_lookup":
-            from backend.modules.bgp_asn_lookup import bgp_asn_lookup
-            result = bgp_asn_lookup(payload.get("target", ""))
-        elif module_name == "wayback_machine":
-            from backend.modules.wayback_machine import wayback_machine_lookup
-            result = wayback_machine_lookup(payload.get("target", ""), payload.get("limit", 50))
-        elif module_name == "email_header_analyzer":
-            from backend.modules.email_header_analyzer import email_header_analyzer
-            result = email_header_analyzer(payload.get("raw_headers", ""))
-        elif module_name == "sherlock_hunt":
-            from backend.modules.sherlock_hunt import sherlock_hunt
-            result = sherlock_hunt(
-                payload.get("username", ""),
-                timeout=payload.get("timeout", 10),
-                max_connections=payload.get("max_connections", 5),
-            )
-        else:
-            result = {"error": f"Unknown module: {module_name}", "success": False}
+            elif module_name == "censys_recon":
+                from backend.modules.censys_recon import censys_search
+
+                api_id = service_config.get("api_id") or payload.get("api_id")
+                api_secret = service_config.get("api_secret") or payload.get("api_secret")
+                result = censys_search(
+                    payload.get("target", ""),
+                    api_id,
+                    api_secret,
+                )
+            elif module_name == "scraper":
+                from backend.modules.scraper import scrape_urls
+
+                result = scrape_urls(
+                    payload.get("urls", []),
+                    payload.get("max_workers", 5),
+                )
+            elif module_name == "port_scanner":
+                from backend.modules.port_scanner import scan_ports
+
+                result = scan_ports(
+                    payload.get("host", ""),
+                    payload.get("ports"),
+                    payload.get("max_workers", 20),
+                    payload.get("timeout", 2.0),
+                )
+            elif module_name in ("graysentinel_ingest", "graysentinel_pipeline"):
+                from backend.modules.graysentinel_pipeline import run_pipeline
+
+                result = run_pipeline(
+                    payload.get("urls", []),
+                    payload.get("strategies"),
+                )
+            elif module_name == "cyberninja_passive":
+                try:
+                    from backend.modules.cyberninja_passive import cyberninja_passive
+                except ImportError:
+                    result = {"error": "CyberNinja passive module not available", "success": False}
+                else:
+                    result = cyberninja_passive(
+                        payload.get("usernames", []),
+                        timeout=payload.get("timeout"),
+                        site_list=payload.get("site_list"),
+                    )
+            elif module_name == "xrecon":
+                from backend.modules.xrecon import xrecon_search
+
+                result = xrecon_search(
+                    payload.get("query", ""),
+                    payload.get("query_type", "username"),
+                )
+            elif module_name == "dns_intel":
+                from backend.modules.dns_intel import dns_recon
+
+                result = dns_recon(
+                    payload.get("domain", ""),
+                    discover_subdomains=payload.get("brute_subdomains", False),
+                    subdomain_wordlist=payload.get("wordlist"),
+                )
+            elif module_name == "whois_lookup":
+                from backend.modules.whois_lookup import whois_lookup
+
+                result = whois_lookup(payload.get("domain", ""))
+            elif module_name == "ssl_analyzer":
+                from backend.modules.ssl_analyzer import ssl_analyze
+
+                result = ssl_analyze(
+                    payload.get("host", ""),
+                    port=payload.get("port", 443),
+                    timeout=payload.get("timeout", 10),
+                )
+            elif module_name == "http_security":
+                from backend.modules.http_security import http_security_audit
+
+                result = http_security_audit(
+                    payload.get("url", ""),
+                    timeout=payload.get("timeout", 10),
+                )
+            elif module_name == "tech_stack":
+                from backend.modules.tech_stack import detect_tech_stack
+
+                result = detect_tech_stack(
+                    payload.get("url", ""),
+                    timeout=payload.get("timeout", 10),
+                )
+            elif module_name == "metadata_extractor":
+                from backend.modules.metadata_extractor import extract_metadata
+
+                result = extract_metadata(payload.get("file_path", ""))
+            elif module_name == "social_hunter":
+                from backend.modules.social_hunter import social_hunter
+
+                result = social_hunter(
+                    payload.get("username", ""),
+                    max_concurrent=payload.get("max_concurrent", 20),
+                )
+            elif module_name == "cert_transparency":
+                from backend.modules.cert_transparency import cert_transparency
+
+                result = cert_transparency(
+                    payload.get("domain", ""),
+                    use_html_fallback=payload.get("use_html_fallback", True),
+                )
+            elif module_name == "deep_scraper":
+                from backend.modules.deep_scraper import deep_scraper
+
+                result = deep_scraper(
+                    payload.get("url", ""),
+                    max_depth=payload.get("max_depth", 2),
+                    max_pages=payload.get("max_pages", 50),
+                    max_concurrent=payload.get("max_concurrent", 10),
+                )
+            elif module_name == "ip_geolocation":
+                from backend.modules.ip_geolocation import ip_geolocation
+
+                result = ip_geolocation(payload.get("target", ""))
+            elif module_name == "reverse_ip_lookup":
+                from backend.modules.reverse_ip_lookup import reverse_ip_lookup
+
+                result = reverse_ip_lookup(payload.get("target", ""))
+            elif module_name == "bgp_asn_lookup":
+                from backend.modules.bgp_asn_lookup import bgp_asn_lookup
+
+                result = bgp_asn_lookup(payload.get("target", ""))
+            elif module_name == "wayback_machine":
+                from backend.modules.wayback_machine import wayback_machine_lookup
+
+                result = wayback_machine_lookup(
+                    payload.get("target", ""),
+                    payload.get("limit", 50),
+                )
+            elif module_name == "email_header_analyzer":
+                from backend.modules.email_header_analyzer import email_header_analyzer
+
+                result = email_header_analyzer(payload.get("raw_headers", ""))
+            elif module_name == "sherlock_hunt":
+                from backend.modules.sherlock_hunt import sherlock_hunt
+
+                result = sherlock_hunt(
+                    payload.get("username", ""),
+                    timeout=payload.get("timeout", 10),
+                    max_connections=payload.get("max_connections", 5),
+                )
+            else:
+                result = {"error": f"Unknown module: {module_name}", "success": False}
     except Exception as e:
-        # Catch any exception from module execution and return as valid JSON
         import traceback
+
         result = {
             "error": str(e),
             "traceback": traceback.format_exc(),
             "success": False,
         }
 
-    # Final write to the REAL stdout — guaranteed to be the last line and to
-    # be valid JSON. Use sys.__stdout__ in case anything still has a handle on
-    # the swapped sys.stdout.
     try:
         output = json.dumps(result, default=str)
     except Exception as e:

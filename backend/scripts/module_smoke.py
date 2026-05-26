@@ -69,6 +69,21 @@ class Case:
     poll_max_s: float | None = None
 
 
+def _error_message_from_result(result: dict[str, Any]) -> str:
+    """Extract a human message from normalized envelope or legacy raw dict."""
+    errors = result.get("errors")
+    if isinstance(errors, list) and errors:
+        first = errors[0]
+        if isinstance(first, dict) and first.get("message"):
+            return str(first["message"])
+    raw = result.get("raw")
+    if isinstance(raw, dict) and raw.get("error"):
+        return str(raw["error"])
+    if result.get("error"):
+        return str(result["error"])
+    return ""
+
+
 def _classify_default(dispatch: dict[str, Any], final: dict[str, Any]) -> str:
     status = str(final.get("status", "")).lower()
     result = final.get("result") or {}
@@ -76,9 +91,27 @@ def _classify_default(dispatch: dict[str, Any], final: dict[str, Any]) -> str:
         return "timeout"
     if status == "failure":
         return "fail"
-    # Some modules return {"success": False, "error": "..."} but task status is SUCCESS
-    if isinstance(result, dict) and result.get("error"):
-        err = str(result.get("error") or "").lower()
+    if not isinstance(result, dict):
+        return "ok"
+
+    # Normalized UI envelope from Celery (ok + errors[])
+    if "ok" in result:
+        if result.get("ok") is False:
+            err = _error_message_from_result(result).lower()
+            if "api key" in err or "unauthorized" in err or "forbidden" in err or "invalid api" in err:
+                return "needs_key"
+            if "packages required" in err or "not available" in err or "not installed" in err:
+                return "needs_deps"
+            if "ssrf" in err or "blocked" in err:
+                return "blocked"
+            if "timeout" in err or "timed out" in err:
+                return "timeout"
+            return "soft_fail"
+        return "ok"
+
+    # Legacy raw module dict (pre-normalize)
+    if result.get("error") or result.get("success") is False:
+        err = _error_message_from_result(result).lower()
         if "api key" in err or "unauthorized" in err or "forbidden" in err:
             return "needs_key"
         if "ssrf" in err or "blocked" in err:
