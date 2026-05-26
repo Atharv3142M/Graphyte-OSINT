@@ -26,7 +26,12 @@ Until a dedicated security email is configured, open a private security advisory
 ## Secure development expectations
 
 - Validate and sanitize all user input.
-- Guard outbound network requests against SSRF targets.
+- Guard outbound network requests against SSRF targets (private IPs, localhost, and link-local ranges are blocked in `backend/api.py`).
 - Avoid introducing hardcoded credentials.
 - Ensure secrets are read from environment variables or secure stores only.
 - Add tests for security-relevant changes when practical.
+- Module subprocesses must not write secrets to stdout (only the final JSON result line belongs on stdout).
+
+## Responsible use
+
+Graphyte OSINT performs active and passive reconnaissance against user-supplied targets. Deploy only on systems and networks you are authorized to assess. Contributors should not add modules that exfiltrate local files, execute arbitrary shell commands from user input, or bypass the platform SSRF policy.
