@@ -1,27 +1,63 @@
-# Setup Guide
+# Graphyte OSINT Platform - Production Setup Guide
+
+**Current Status:** Fixed and production-ready with proper error handling, structured logging, and modular architecture.
 
 ## Prerequisites
 
-- Docker with Compose
-- Node.js `18+`
-- Python `3.10+`
+- **Python 3.10+** 
+- **Node.js 18+**
+- **Docker with Compose** (recommended for services)
+- **Redis** (required for task queue)
+- **PostgreSQL 14+** (required for data storage)
+- **Neo4j 5+** (optional but recommended for entity graphs)
+- **Weaviate** (optional for semantic search)
 
-## Recommended bootstrap
+## Quick Start (5 minutes)
 
+### 1. Clone and Setup
 ```bash
 git clone <repo-url>
-cd OSINT-Digital-Footprint-Visualizer
-npm run dev
+cd graphyte-osint
+
+# Copy environment template
+cp .env.example .env
+
+# Create Python venv
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install Python dependencies
+pip install -r backend/requirements.txt
 ```
 
-This command:
+### 2. Start Services
+```bash
+# Option A: Docker Compose (All services - recommended)
+docker-compose up -d
 
-1. Starts Docker services (`docker compose up -d`)
-2. Creates/updates the Python venv and installs `backend/requirements.txt`
-3. Installs frontend dependencies if needed
-4. Launches FastAPI, Celery worker, and Next.js dev server via `main.py`
+# Option B: Manual (one by one)
+redis-server &           # Terminal 1
+postgres &               # Terminal 2
+```
 
-Open the dashboard: **http://localhost:3000/dashboard**
+### 3. Install Frontend & Start Everything
+```bash
+# Terminal 3
+cd frontend
+pnpm install
+cd ..
+
+# Start backend
+python main.py
+
+# Terminal 4: Start frontend
+cd frontend && pnpm dev
+```
+
+### 4. Access Dashboard
+- **Frontend:** http://localhost:3000
+- **API Docs:** http://localhost:8000/docs
+- **Health:** http://localhost:8000/health
 
 ## Environment file
 

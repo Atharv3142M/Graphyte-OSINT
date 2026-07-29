@@ -1,5 +1,8 @@
-# Unified Enterprise OSINT Platform - Polyglot Persistence Stack
+# Graphyte OSINT Platform - Production Infrastructure Stack
 # Run: docker compose up -d
+# All services run on isolated network with health checks
+
+version: '3.9'
 
 services:
   # In-memory message broker for Celery task queue
